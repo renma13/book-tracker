@@ -237,6 +237,38 @@ function setView(view) {
   if (view === "bookshelf") renderBookshelf();
 }
 
+// A book occupies a day on the calendar if that day is its start date, its finish
+// date, or falls strictly between the two (i.e. still being read that day). Returns
+// "started" | "finished" | "in-progress" | null. If startDate and finishDate land on
+// the same day, "finished" wins so the book doesn't show twice.
+function dayStatusForBook(book, dateKey) {
+  if (book.finishDate === dateKey) return "finished";
+  if (book.startDate === dateKey) return "started";
+  if (book.startDate && book.finishDate && book.startDate < dateKey && dateKey < book.finishDate) {
+    return "in-progress";
+  }
+  return null;
+}
+
+function calendarCoverClass(status) {
+  // In-progress days reuse the grey "finished" look, since the book isn't done yet
+  // but isn't the vivid "just started" moment either.
+  if (status === "finished" || status === "in-progress") return "finished-cover";
+  return "started-cover";
+}
+
+function calendarStatusLabel(status) {
+  if (status === "finished") return "Finished";
+  if (status === "in-progress") return "Still reading";
+  return "Started";
+}
+
+function calendarBadgeClass(status) {
+  if (status === "finished") return "finished-badge";
+  if (status === "in-progress") return "finished-badge";
+  return "started-badge";
+}
+
 function renderCalendar() {
   const CALENDAR_DAY_PREVIEW_LIMIT = 2;
   const year = calendarDate.getFullYear();
@@ -270,16 +302,18 @@ function renderCalendar() {
 
     const date = new Date(year, month, dayNumber);
     const dateKey = toDateInput(date);
-    const entries = books.filter((book) => book.startDate === dateKey || book.finishDate === dateKey);
+    const entries = books
+      .filter((book) => dayStatusForBook(book, dateKey))
+      .map((book) => ({ book, status: dayStatusForBook(book, dateKey) }));
     const isToday = dateKey === toDateInput(new Date());
 
     cell.innerHTML = `<div class="day-top"><span>${dayNumber}</span>${isToday ? "<b>Today</b>" : ""}</div>`;
 
-    entries.slice(0, CALENDAR_DAY_PREVIEW_LIMIT).forEach((book) => {
+    entries.slice(0, CALENDAR_DAY_PREVIEW_LIMIT).forEach(({ book, status }) => {
       const coverButton = document.createElement("button");
       coverButton.type = "button";
-      coverButton.className = `calendar-cover ${book.finishDate === dateKey ? "finished-cover" : "started-cover"}`;
-      coverButton.setAttribute("aria-label", `${book.finishDate === dateKey ? "Finished" : "Started"} ${book.title}`);
+      coverButton.className = `calendar-cover ${calendarCoverClass(status)}`;
+      coverButton.setAttribute("aria-label", `${calendarStatusLabel(status)} ${book.title}`);
       coverButton.innerHTML = coverMarkup(book);
       coverButton.addEventListener("click", (event) => {
         event.stopPropagation();
@@ -317,11 +351,10 @@ function openDayBooks(dateKey, entries) {
   elements.dayBooksTitle.textContent = `${entries.length} ${entries.length === 1 ? "book" : "books"} logged`;
   elements.dayBooksList.innerHTML = "";
 
-  entries.forEach((book) => {
-    const isFinished = book.finishDate === dateKey;
+  entries.forEach(({ book, status }) => {
     const row = compactBook(book, {
-      badgeText: isFinished ? "Finished" : "Started",
-      badgeClass: isFinished ? "finished-badge" : "started-badge",
+      badgeText: calendarStatusLabel(status),
+      badgeClass: calendarBadgeClass(status),
     });
     elements.dayBooksList.append(row);
   });
