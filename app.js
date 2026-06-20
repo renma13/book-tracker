@@ -1,5 +1,6 @@
 const STORAGE_KEY = "chapter-garden-books";
 const STATUS_STORAGE_KEY = "chapter-garden-statuses";
+const SYNC_CONFIG_KEY = "chapter-garden-sync-config";
 
 const defaultStatuses = [
   { id: "want", label: "Want to read", color: "#c8bed9", builtIn: true },
@@ -39,6 +40,7 @@ function backfillMissingDefaultStatuses(savedStatuses) {
 
 function saveStatuses() {
   localStorage.setItem(STATUS_STORAGE_KEY, JSON.stringify(statuses));
+  queueCloudPush();
 }
 
 function statusLabel(id) {
@@ -164,6 +166,13 @@ const elements = {
   importCancelChoice: $("#importCancelChoice"),
   importProgress: $("#importProgress"),
   importProgressText: $("#importProgressText"),
+  syncDialog: $("#syncDialog"),
+  syncConfigInput: $("#syncConfigInput"),
+  syncCodeInput: $("#syncCodeInput"),
+  syncStatusBanner: $("#syncStatusBanner"),
+  syncDot: $("#syncDot"),
+  syncButtonLabel: $("#syncButtonLabel"),
+  disconnectSync: $("#disconnectSync"),
 };
 
 function loadBooks() {
@@ -180,6 +189,7 @@ function loadBooks() {
 
 function saveBooks() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(books));
+  queueCloudPush();
 }
 
 function filteredBooks() {
@@ -949,7 +959,17 @@ async function enrichBooksFromOpenLibrary(mappedBooks, onProgress) {
 
 // ---------- Import mode prompt (merge / replace / cancel) ----------
 
-function promptImportMode() {
+function promptImportMode(copy = {}) {
+  const {
+    eyebrow = "Import books",
+    title = "You already have books saved",
+    body = "Add the imported books to your existing library, or replace your library with the imported file?",
+  } = copy;
+
+  $("#importModeEyebrow").textContent = eyebrow;
+  $("#importModeTitle").textContent = title;
+  $("#importModeBody").textContent = body;
+
   return new Promise((resolve) => {
     const dialog = elements.importModeDialog;
     const handleChoice = (mode) => {
@@ -1020,6 +1040,248 @@ function showImportProgress(done, total) {
 
 function hideImportProgress() {
   elements.importProgress.hidden = true;
+}
+
+// ---------- Cloud sync (optional, lets the same library appear on multiple devices) ----------
+//
+// localStorage only lives inside one browser on one device, so by default nothing here
+// crosses devices. If the person connects a Firebase project, we mirror `books` and
+// `statuses` to a single Firestore document (keyed by a private "library code" they choose)
+// and listen for changes so every connected device converges on the same data.
+//
+// This is intentionally simple last-write-wins sync, not real-time conflict resolution:
+// if two devices edit while both offline, whichever saves last "wins" once both reconnect.
+
+const syncState = {
+  docRef: null,
+  unsubscribe: null,
+};
+
+let cloudPushHandle = null;
+
+function isSyncConnected() {
+  return Boolean(syncState.docRef);
+}
+
+function loadSyncConfig() {
+  const stored = localStorage.getItem(SYNC_CONFIG_KEY);
+  if (!stored) return null;
+  try {
+    return JSON.parse(stored);
+  } catch {
+    return null;
+  }
+}
+
+function saveSyncConfig(value) {
+  localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify(value));
+}
+
+function clearSyncConfig() {
+  localStorage.removeItem(SYNC_CONFIG_KEY);
+}
+
+function generateSyncCode() {
+  return Array.from(crypto.getRandomValues(new Uint8Array(8)))
+    .map((value) => value.toString(36).padStart(2, "0"))
+    .join("")
+    .slice(0, 14);
+}
+
+// Firebase config copied from the console is often a JS object literal (unquoted keys,
+// a leading "const firebaseConfig = ", a trailing semicolon) rather than strict JSON.
+// Accept either.
+function parseFirebaseConfigInput(raw) {
+  let text = raw.trim();
+  text = text.replace(/^[^{]*?=\s*/, "");
+  text = text.replace(/;\s*$/, "");
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    const quoted = text.replace(/([{,]\s*)([a-zA-Z0-9_$]+)(\s*:)/g, '$1"$2"$3');
+    return JSON.parse(quoted);
+  }
+}
+
+function setSyncStatus(state, message = "") {
+  const messages = {
+    idle: "Not connected — books are saved only on this device.",
+    connecting: "Connecting…",
+    synced: "Synced — this device is connected.",
+    error: message ? `Sync error: ${message}` : "Sync error. Check your config and library code.",
+  };
+
+  if (elements.syncStatusBanner) {
+    elements.syncStatusBanner.textContent = messages[state] || messages.idle;
+    elements.syncStatusBanner.className = `sync-status${state === "synced" ? " is-connected" : ""}${
+      state === "error" ? " is-error" : ""
+    }`;
+  }
+
+  if (elements.syncDot) {
+    elements.syncDot.classList.toggle("is-connected", state === "synced");
+    elements.syncDot.classList.toggle("is-pending", state === "connecting");
+  }
+
+  if (elements.syncButtonLabel) {
+    elements.syncButtonLabel.textContent = state === "synced" ? "Synced" : "Sync devices";
+  }
+
+  if (elements.disconnectSync) {
+    elements.disconnectSync.hidden = state === "idle";
+  }
+}
+
+async function connectSync(configObj, code, { isReconnect = false } = {}) {
+  setSyncStatus("connecting");
+
+  const app = window.firebase.apps.length ? window.firebase.apps[0] : window.firebase.initializeApp(configObj);
+  await window.firebase.auth().signInAnonymously();
+  const db = window.firebase.firestore();
+  const docRef = db.collection("libraries").doc(code);
+  const snapshot = await docRef.get();
+
+  let mode = "replace";
+
+  if (snapshot.exists) {
+    const cloud = snapshot.data() || {};
+    const cloudBooks = Array.isArray(cloud.books) ? cloud.books : [];
+
+    if (!isReconnect && books.length && cloudBooks.length) {
+      mode = await promptImportMode({
+        eyebrow: "Cloud sync",
+        title: "This library code already has books saved",
+        body: "Add the books already on this device to the synced library, or replace them with what's already saved in the cloud?",
+      });
+      if (mode === "cancel") {
+        setSyncStatus("idle");
+        return;
+      }
+    }
+
+    books = mode === "merge" ? mergeBooks(books, cloudBooks) : cloudBooks;
+    if (Array.isArray(cloud.statuses) && cloud.statuses.length) statuses = cloud.statuses;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(books));
+    localStorage.setItem(STATUS_STORAGE_KEY, JSON.stringify(statuses));
+    render();
+  }
+
+  syncState.unsubscribe?.();
+  syncState.docRef = docRef;
+  syncState.unsubscribe = docRef.onSnapshot(handleRemoteSnapshot, handleSyncError);
+  saveSyncConfig({ config: configObj, code });
+
+  if (!snapshot.exists || mode === "merge") await pushCloudState();
+
+  setSyncStatus("synced");
+}
+
+function disconnectSync() {
+  syncState.unsubscribe?.();
+  syncState.docRef = null;
+  syncState.unsubscribe = null;
+  clearSyncConfig();
+  setSyncStatus("idle");
+}
+
+function handleRemoteSnapshot(snapshot) {
+  if (snapshot.metadata.hasPendingWrites) return;
+  const data = snapshot.data();
+  if (!data) return;
+
+  books = Array.isArray(data.books) ? data.books : books;
+  if (Array.isArray(data.statuses) && data.statuses.length) statuses = data.statuses;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(books));
+  localStorage.setItem(STATUS_STORAGE_KEY, JSON.stringify(statuses));
+  render();
+  setSyncStatus("synced");
+}
+
+function handleSyncError(error) {
+  setSyncStatus("error", error.message);
+}
+
+function queueCloudPush() {
+  if (!isSyncConnected()) return;
+  if (cloudPushHandle) clearTimeout(cloudPushHandle);
+  cloudPushHandle = setTimeout(pushCloudState, 350);
+}
+
+async function pushCloudState() {
+  if (!syncState.docRef) return;
+  try {
+    await syncState.docRef.set({
+      books,
+      statuses,
+      updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
+    });
+  } catch (error) {
+    setSyncStatus("error", error.message);
+  }
+}
+
+function openSyncDialog() {
+  const stored = loadSyncConfig();
+  if (stored) {
+    elements.syncConfigInput.value = JSON.stringify(stored.config, null, 2);
+    elements.syncCodeInput.value = stored.code;
+  }
+  elements.syncDialog.showModal();
+}
+
+async function handleConnectSyncClick() {
+  const raw = elements.syncConfigInput.value.trim();
+  const code = elements.syncCodeInput.value.trim();
+
+  if (!raw || !code) {
+    setSyncStatus("error", "Paste your Firebase config and enter a library code first.");
+    return;
+  }
+
+  if (typeof window.firebase === "undefined") {
+    setSyncStatus("error", "Sync libraries did not load. Check your connection and try again.");
+    return;
+  }
+
+  let configObj;
+  try {
+    configObj = parseFirebaseConfigInput(raw);
+  } catch {
+    setSyncStatus("error", "That doesn't look like valid Firebase config. Paste the object from your Firebase project settings.");
+    return;
+  }
+
+  try {
+    await connectSync(configObj, code, { isReconnect: false });
+    if (isSyncConnected()) elements.syncDialog.close();
+  } catch (error) {
+    setSyncStatus("error", error.message);
+  }
+}
+
+function handleDisconnectSyncClick() {
+  const confirmed = confirm(
+    "Disconnect this device from cloud sync? Books already here stay on this device, but new changes won't reach your other devices until you reconnect."
+  );
+  if (!confirmed) return;
+  disconnectSync();
+  elements.syncConfigInput.value = "";
+  elements.syncCodeInput.value = "";
+}
+
+async function initSyncFromStoredConfig() {
+  const stored = loadSyncConfig();
+  if (!stored || typeof window.firebase === "undefined") {
+    setSyncStatus("idle");
+    return;
+  }
+
+  try {
+    await connectSync(stored.config, stored.code, { isReconnect: true });
+  } catch (error) {
+    setSyncStatus("error", error.message);
+  }
 }
 
 function toDateInput(date) {
@@ -1505,6 +1767,17 @@ elements.goToToday.addEventListener("click", () => {
 $("#exportData").addEventListener("click", exportData);
 $("#importData").addEventListener("change", importData);
 
+$("#openSync").addEventListener("click", openSyncDialog);
+$("#closeSyncDialog").addEventListener("click", () => elements.syncDialog.close());
+elements.syncDialog.addEventListener("click", (event) => {
+  if (event.target === elements.syncDialog) elements.syncDialog.close();
+});
+$("#generateSyncCode").addEventListener("click", () => {
+  elements.syncCodeInput.value = generateSyncCode();
+});
+$("#connectSync").addEventListener("click", handleConnectSyncClick);
+elements.disconnectSync.addEventListener("click", handleDisconnectSyncClick);
+
 elements.bookForm.addEventListener("submit", (event) => {
   event.preventDefault();
   const book = collectFormBook();
@@ -1550,3 +1823,4 @@ setView(currentView);
 buildStarRating();
 setupNotesEditor();
 render();
+initSyncFromStoredConfig();

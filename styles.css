@@ -172,6 +172,68 @@ button {
   grid-column: 1 / -1;
 }
 
+.sync-button {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+}
+
+.sync-dot {
+  width: 8px;
+  height: 8px;
+  background: #cfa6a0;
+  border-radius: 50%;
+}
+
+.sync-dot.is-connected {
+  background: var(--sage-deep);
+}
+
+.sync-dot.is-pending {
+  background: var(--butter);
+}
+
+.sync-copy {
+  margin: 0 0 16px;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.sync-hint {
+  margin-top: -4px;
+}
+
+.sync-status {
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  color: #6b5b35;
+  font-size: 0.85rem;
+  font-weight: 750;
+  background: #f6efe6;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.sync-status.is-connected {
+  color: #3f5a39;
+  background: rgba(168, 188, 164, 0.24);
+  border-color: var(--sage);
+}
+
+.sync-status.is-error {
+  color: #8a3f35;
+  background: var(--rose-soft);
+  border-color: #e3b7ab;
+}
+
+#syncConfigInput {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.82rem;
+}
+
 .primary-button,
 .secondary-button {
   padding: 0 16px;

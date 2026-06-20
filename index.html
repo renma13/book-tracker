@@ -38,6 +38,10 @@
           <button class="ghost-button" type="button" id="exportData">Export</button>
           <label class="ghost-button file-button" for="importData">Import</label>
           <input id="importData" type="file" accept="application/json,.json,.csv,text/csv" />
+          <button class="ghost-button sync-button" type="button" id="openSync">
+            <span class="sync-dot" id="syncDot" aria-hidden="true"></span>
+            <span id="syncButtonLabel">Sync devices</span>
+          </button>
         </div>
       </aside>
 
@@ -293,11 +297,11 @@
       <div class="dialog-card">
         <div class="dialog-header">
           <div>
-            <p class="eyebrow">Import books</p>
-            <h2>You already have books saved</h2>
+            <p class="eyebrow" id="importModeEyebrow">Import books</p>
+            <h2 id="importModeTitle">You already have books saved</h2>
           </div>
         </div>
-        <p>Add the imported books to your existing library, or replace your library with the imported file?</p>
+        <p id="importModeBody">Add the imported books to your existing library, or replace your library with the imported file?</p>
         <div class="dialog-actions">
           <button class="ghost-button" type="button" id="importCancelChoice">Cancel</button>
           <div>
@@ -322,6 +326,59 @@
       </div>
     </template>
 
+    <dialog id="syncDialog">
+      <div class="dialog-card">
+        <div class="dialog-header">
+          <div>
+            <p class="eyebrow">Cloud sync</p>
+            <h2>Sync across devices</h2>
+          </div>
+          <button class="icon-button" type="button" id="closeSyncDialog" aria-label="Close">×</button>
+        </div>
+
+        <p class="sync-copy">
+          Chapter Garden normally saves books only in this browser. To see the same library on your
+          phone, laptop, or any other browser, connect a free Firebase project below. Your books are
+          stored in your own Firebase project, not on any Anthropic or GitHub server.
+        </p>
+
+        <p class="sync-status" id="syncStatusBanner">Not connected — books are saved only on this device.</p>
+
+        <label class="wide">
+          Firebase config
+          <textarea
+            id="syncConfigInput"
+            rows="5"
+            placeholder='Paste the firebaseConfig object from your Firebase project settings, e.g. { "apiKey": "...", "projectId": "...", ... }'
+          ></textarea>
+        </label>
+
+        <label class="wide">
+          Library code
+          <div class="lookup-row">
+            <input id="syncCodeInput" type="text" placeholder="Same code on every device, e.g. a long random phrase" />
+            <button class="secondary-button" type="button" id="generateSyncCode">Generate</button>
+          </div>
+        </label>
+
+        <p class="sync-copy sync-hint">
+          Use the exact same Firebase config and library code on every device you want synced together.
+          Treat the code like a password — keep it private.
+        </p>
+
+        <div class="dialog-actions">
+          <button class="danger-button" type="button" id="disconnectSync" hidden>Disconnect</button>
+          <div>
+            <a class="ghost-button" href="https://console.firebase.google.com/" target="_blank" rel="noopener">Open Firebase console</a>
+            <button class="primary-button" type="button" id="connectSync">Turn on sync</button>
+          </div>
+        </div>
+      </div>
+    </dialog>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.3.0/firebase-app-compat.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.3.0/firebase-auth-compat.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.3.0/firebase-firestore-compat.min.js"></script>
     <script src="app.js"></script>
   </body>
 </html>
