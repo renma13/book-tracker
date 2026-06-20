@@ -1,6 +1,6 @@
 # Chapter Garden
 
-A personal book tracker designed as a calm Goodreads alternative. The app is a static site, so it can be hosted directly on GitHub Pages.
+A personal book tracker designed as a Goodreads alternative. The app is a static site, so it can be hosted directly on GitHub Pages.
 
 ## Features
 
