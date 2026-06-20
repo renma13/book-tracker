@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chapter Garden</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Book tracker navigation">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">
+            <img src="sprout-icon.webp" alt="" class="brand-sprout-img" width="46" height="46" />
+          </div>
+          <div>
+            <h1>Chapter Garden</h1>
+            <p>Personal reading tracker</p>
+          </div>
+        </div>
+
+        <nav class="nav-tabs" aria-label="Views">
+          <button class="nav-tab active" type="button" data-view="calendar">Calendar</button>
+          <button class="nav-tab" type="button" data-view="library">Library</button>
+          <button class="nav-tab" type="button" data-view="shelves">Shelves</button>
+          <button class="nav-tab" type="button" data-view="bookshelf">Bookshelf</button>
+          <button class="nav-tab" type="button" data-view="stats">Stats</button>
+        </nav>
+
+        <div class="sidebar-panel">
+          <p class="panel-label">This month</p>
+          <strong id="monthCount">0 books</strong>
+          <span id="monthPages">0 pages logged</span>
+        </div>
+
+        <div class="sidebar-actions">
+          <button class="primary-button" type="button" id="openAddBook">Add book</button>
+          <button class="ghost-button" type="button" id="exportData">Export</button>
+          <label class="ghost-button file-button" for="importData">Import</label>
+          <input id="importData" type="file" accept="application/json,.json,.csv,text/csv" />
+        </div>
+      </aside>
+
+      <main class="main-content">
+        <header class="topbar">
+          <div>
+            <h2 id="viewTitle">Calendar</h2>
+          </div>
+          <div class="search-wrap">
+            <label class="sr-only" for="globalSearch">Search your saved books</label>
+            <input id="globalSearch" type="search" placeholder="Filter your books" />
+          </div>
+        </header>
+
+        <section class="view active" id="calendarView" aria-labelledby="calendarHeading">
+          <div class="view-toolbar">
+            <div>
+              <h3 id="calendarHeading">Reading calendar</h3>
+              <p>Track when you started, finished, or want to read each book.</p>
+            </div>
+            <div class="calendar-controls">
+              <button class="ghost-button today-button" type="button" id="goToToday" hidden>Today</button>
+              <button class="icon-button" type="button" id="prevMonth" aria-label="Previous month">‹</button>
+              <strong id="calendarMonth"></strong>
+              <button class="icon-button" type="button" id="nextMonth" aria-label="Next month">›</button>
+            </div>
+          </div>
+          <div class="calendar-grid weekdays" aria-hidden="true">
+            <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+          </div>
+          <div class="calendar-grid" id="calendarGrid"></div>
+        </section>
+
+        <section class="view" id="libraryView" aria-labelledby="libraryHeading">
+          <div class="view-toolbar">
+            <div>
+              <h3 id="libraryHeading">Library</h3>
+              <p>Your complete reading archive.</p>
+            </div>
+            <select id="statusFilter" aria-label="Filter by status">
+              <option value="all">All books</option>
+              <option value="want">Want to read</option>
+              <option value="reading">Reading</option>
+              <option value="finished">Finished</option>
+              <option value="paused">Paused</option>
+            </select>
+          </div>
+
+          <div class="reading-spotlight" id="readingSpotlight" hidden>
+            <div class="spotlight-heading">
+              <h3>Currently reading</h3>
+              <p>Picked up and still in progress.</p>
+            </div>
+            <div class="spotlight-grid" id="spotlightGrid"></div>
+          </div>
+
+          <div class="library-divider" id="libraryDivider" hidden>
+            <span>Rest of the library</span>
+          </div>
+
+          <div class="book-grid" id="bookGrid"></div>
+        </section>
+
+        <section class="view" id="shelvesView" aria-labelledby="shelvesHeading">
+          <div class="view-toolbar">
+            <div>
+              <h3 id="shelvesHeading">Shelves</h3>
+              <p>Scan your books by reading status.</p>
+            </div>
+            <button class="ghost-button" type="button" id="manageStatuses">Organize Shelves</button>
+          </div>
+          <div class="shelf-board" id="shelfBoard"></div>
+        </section>
+
+        <section class="view" id="bookshelfView" aria-labelledby="bookshelfHeading">
+          <div class="view-toolbar">
+            <div>
+              <h3 id="bookshelfHeading">Bookshelf</h3>
+              <p>Finished this year, newest reads first.</p>
+            </div>
+          </div>
+          <div class="bookshelf-stage" id="bookshelfStage"></div>
+        </section>
+
+        <section class="view" id="statsView" aria-labelledby="statsHeading">
+          <div class="view-toolbar">
+            <div>
+              <h3 id="statsHeading">Stats</h3>
+              <p>A soft snapshot of your reading life.</p>
+            </div>
+            <select id="statsYearFilter" aria-label="Filter stats by year"></select>
+          </div>
+          <div class="stats-grid" id="statsGrid"></div>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="bookDialog">
+      <form method="dialog" class="dialog-card" id="bookForm">
+        <div class="dialog-header">
+          <div>
+            <p class="eyebrow">Book details</p>
+            <h2 id="dialogTitle">Add a book</h2>
+          </div>
+          <button class="icon-button" type="button" id="closeDialog" aria-label="Close">×</button>
+        </div>
+
+        <section class="lookup-panel">
+          <label for="bookLookup">Search Open Library</label>
+          <div class="lookup-row">
+            <input id="bookLookup" type="search" placeholder="Try title, author, or ISBN" />
+            <button class="secondary-button" type="button" id="lookupButton">Search</button>
+          </div>
+          <div class="lookup-results" id="lookupResults"></div>
+        </section>
+
+        <input type="hidden" id="bookId" />
+        <div class="form-grid">
+          <label>
+            Title
+            <input id="title" required />
+          </label>
+          <label>
+            Author
+            <input id="author" />
+          </label>
+          <label>
+            Status
+            <select id="status">
+              <option value="want">Want to read</option>
+              <option value="reading">Reading</option>
+              <option value="finished">Finished</option>
+              <option value="paused">Paused</option>
+            </select>
+          </label>
+          <label>
+            Rating
+            <div class="star-rating" id="starRating" role="slider" tabindex="0" aria-label="Rating" aria-valuemin="0" aria-valuemax="5" aria-valuenow="0" aria-valuetext="Not rated"></div>
+            <input type="hidden" id="rating" />
+          </label>
+          <label>
+            Start date
+            <input id="startDate" type="date" />
+          </label>
+          <label>
+            Finish date
+            <input id="finishDate" type="date" />
+          </label>
+          <label>
+            Publish year
+            <input id="year" inputmode="numeric" />
+          </label>
+          <label>
+            Pages
+            <input id="pages" type="number" min="0" />
+          </label>
+          <label class="wide">
+            Cover URL
+            <input id="cover" />
+          </label>
+          <label class="wide">
+            Genres
+            <input id="genres" placeholder="Fantasy, memoir, literary fiction" />
+          </label>
+          <label class="wide">
+            Tags
+            <input id="tags" placeholder="Book club, favorite, reread, borrowed" />
+          </label>
+          <label class="wide">
+            Notes
+            <div class="rte">
+              <div class="rte-toolbar" role="toolbar" aria-label="Notes formatting" aria-controls="notes">
+                <button class="rte-btn" type="button" data-command="bold" aria-label="Bold"><b>B</b></button>
+                <button class="rte-btn" type="button" data-command="italic" aria-label="Italic"><i>I</i></button>
+                <button class="rte-btn" type="button" data-command="underline" aria-label="Underline"><u>U</u></button>
+                <span class="rte-divider" aria-hidden="true"></span>
+                <button class="rte-btn" type="button" data-command="insertUnorderedList" aria-label="Bulleted list">• List</button>
+                <button class="rte-btn" type="button" data-command="insertOrderedList" aria-label="Numbered list">1. List</button>
+                <span class="rte-divider" aria-hidden="true"></span>
+                <button class="rte-btn" type="button" data-command="removeFormat" aria-label="Clear formatting">Clear</button>
+              </div>
+              <div
+                id="notes"
+                class="rte-editor"
+                contenteditable="true"
+                role="textbox"
+                aria-multiline="true"
+                aria-label="Notes"
+                data-placeholder="Favorite lines, feelings, who recommended it..."
+              ></div>
+            </div>
+          </label>
+        </div>
+
+        <div class="dialog-actions" id="dialogActions">
+          <button class="danger-button" type="button" id="deleteBook">Delete</button>
+          <div>
+            <button class="ghost-button" type="button" id="clearForm">Clear</button>
+            <button class="primary-button" type="submit">Save book</button>
+          </div>
+        </div>
+        <div class="delete-confirm" id="deleteConfirm" hidden>
+          <span>Delete this book from your tracker?</span>
+          <div>
+            <button class="ghost-button" type="button" id="cancelDelete">Cancel</button>
+            <button class="danger-button" type="button" id="confirmDelete">Yes, delete</button>
+          </div>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="manageStatusesDialog">
+      <div class="dialog-card">
+        <div class="dialog-header">
+          <div>
+            <p class="eyebrow">Reading statuses</p>
+            <h2>Manage statuses</h2>
+          </div>
+          <button class="icon-button" type="button" id="closeManageStatuses" aria-label="Close">×</button>
+        </div>
+
+        <div class="status-list" id="statusList"></div>
+
+        <form id="newStatusForm" class="new-status-form">
+          <label class="wide">
+            New status name
+            <input id="newStatusName" placeholder="e.g. DNF, On hold, Rereading" required />
+          </label>
+          <label>
+            Color
+            <input id="newStatusColor" type="color" value="#b6c9d8" />
+          </label>
+          <button class="primary-button" type="submit">Add status</button>
+        </form>
+      </div>
+    </dialog>
+
+    <dialog id="dayBooksDialog">
+      <div class="dialog-card">
+        <div class="dialog-header">
+          <div>
+            <p class="eyebrow" id="dayBooksEyebrow">Logged that day</p>
+            <h2 id="dayBooksTitle">Books</h2>
+          </div>
+          <button class="icon-button" type="button" id="closeDayBooks" aria-label="Close">×</button>
+        </div>
+
+        <div class="day-books-list" id="dayBooksList"></div>
+      </div>
+    </dialog>
+
+    <dialog id="importModeDialog">
+      <div class="dialog-card">
+        <div class="dialog-header">
+          <div>
+            <p class="eyebrow">Import books</p>
+            <h2>You already have books saved</h2>
+          </div>
+        </div>
+        <p>Add the imported books to your existing library, or replace your library with the imported file?</p>
+        <div class="dialog-actions">
+          <button class="ghost-button" type="button" id="importCancelChoice">Cancel</button>
+          <div>
+            <button class="danger-button" type="button" id="importReplaceChoice">Replace library</button>
+            <button class="primary-button" type="button" id="importMergeChoice">Merge / add</button>
+          </div>
+        </div>
+      </div>
+    </dialog>
+
+    <div class="import-progress" id="importProgress" hidden>
+      <div class="import-progress-card">
+        <strong>Importing your books</strong>
+        <p id="importProgressText">Fetching covers and genres…</p>
+      </div>
+    </div>
+
+    <template id="emptyStateTemplate">
+      <div class="empty-state">
+        <strong>No books here yet</strong>
+        <p>Add a book manually or search Open Library to pre-fill the details.</p>
+      </div>
+    </template>
+
+    <script src="app.js"></script>
+  </body>
+</html>
