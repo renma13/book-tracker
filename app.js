@@ -855,27 +855,58 @@ function renderPaceChart(finishedWithDates) {
     return;
   }
 
-  const width = 100;
-  const height = 100;
+  // The viewBox matches the rendered box's real aspect ratio (instead of a plain
+  // 100x100 square stretched with preserveAspectRatio="none"), so dots stay round
+  // instead of being squashed into ellipses. Padding is reserved on the left and
+  // bottom for axis labels.
+  const viewWidth = 320;
+  const viewHeight = 160;
+  const padLeft = 34;
+  const padBottom = 20;
+  const padTop = 10;
+  const padRight = 10;
+  const plotWidth = viewWidth - padLeft - padRight;
+  const plotHeight = viewHeight - padTop - padBottom;
+
   const maxDays = Math.max(...timed.map((entry) => entry.days)) * 1.08;
   const maxPages = Math.max(...timed.map((entry) => entry.pages)) * 1.08;
 
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-  svg.setAttribute("preserveAspectRatio", "none");
+  svg.setAttribute("viewBox", `0 0 ${viewWidth} ${viewHeight}`);
   svg.setAttribute("class", "pace-svg");
   svg.setAttribute("role", "img");
   svg.setAttribute("aria-label", "Scatter plot of days spent reading versus page count");
 
-  [0.25, 0.5, 0.75].forEach((fraction) => {
+  [0, 0.5, 1].forEach((fraction) => {
+    const y = padTop + plotHeight * fraction;
     const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    line.setAttribute("x1", 0);
-    line.setAttribute("x2", width);
-    line.setAttribute("y1", height * fraction);
-    line.setAttribute("y2", height * fraction);
+    line.setAttribute("x1", padLeft);
+    line.setAttribute("x2", padLeft + plotWidth);
+    line.setAttribute("y1", y);
+    line.setAttribute("y2", y);
     line.setAttribute("class", "pace-gridline");
-    line.setAttribute("vector-effect", "non-scaling-stroke");
     svg.append(line);
+
+    const pagesAtLine = Math.round(maxPages * (1 - fraction));
+    const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    label.setAttribute("x", padLeft - 6);
+    label.setAttribute("y", y + 3);
+    label.setAttribute("text-anchor", "end");
+    label.setAttribute("class", "pace-axis-label");
+    label.textContent = pagesAtLine;
+    svg.append(label);
+  });
+
+  [0, 0.5, 1].forEach((fraction) => {
+    const x = padLeft + plotWidth * fraction;
+    const daysAtLine = Math.round(maxDays * fraction);
+    const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    label.setAttribute("x", x);
+    label.setAttribute("y", viewHeight - 4);
+    label.setAttribute("text-anchor", fraction === 0 ? "start" : fraction === 1 ? "end" : "middle");
+    label.setAttribute("class", "pace-axis-label");
+    label.textContent = `${daysAtLine}d`;
+    svg.append(label);
   });
 
   const tooltip = document.createElement("div");
@@ -883,13 +914,12 @@ function renderPaceChart(finishedWithDates) {
   container.append(tooltip);
 
   timed.forEach(({ book, days, pages }) => {
-    const x = (days / maxDays) * width;
-    const y = height - (pages / maxPages) * height;
+    const x = padLeft + (days / maxDays) * plotWidth;
+    const y = padTop + plotHeight - (pages / maxPages) * plotHeight;
     const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
     dot.setAttribute("cx", x);
     dot.setAttribute("cy", y);
-    dot.setAttribute("r", 2.6);
-    dot.setAttribute("vector-effect", "non-scaling-stroke");
+    dot.setAttribute("r", 4);
     dot.setAttribute("class", "pace-dot");
     dot.setAttribute("tabindex", "0");
     dot.setAttribute("aria-label", `${book.title}: ${days} ${days === 1 ? "day" : "days"}, ${pages} pages`);
