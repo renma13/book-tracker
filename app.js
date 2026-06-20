@@ -134,8 +134,14 @@ const elements = {
   libraryDivider: $("#libraryDivider"),
   shelfBoard: $("#shelfBoard"),
   bookshelfStage: $("#bookshelfStage"),
-  statsGrid: $("#statsGrid"),
   statsYearFilter: $("#statsYearFilter"),
+  statsHero: $("#statsHero"),
+  rhythmChart: $("#rhythmChart"),
+  rhythmSub: $("#rhythmSub"),
+  genreDonutWrap: $("#genreDonutWrap"),
+  ratingBars: $("#ratingBars"),
+  paceChart: $("#paceChart"),
+  insightsList: $("#insightsList"),
   calendarGrid: $("#calendarGrid"),
   calendarMonth: $("#calendarMonth"),
   goToToday: $("#goToToday"),
@@ -550,17 +556,14 @@ function renderStats() {
     if (isAllTime) return true;
     return book.finishDate && Number(book.finishDate.slice(0, 4)) === year;
   });
+  const finishedWithDates = finished.filter((book) => book.finishDate);
   const pages = finished.reduce((sum, book) => sum + Number(book.pages || 0), 0);
   const rated = finished.filter((book) => book.rating);
   const averageRating = rated.length
-    ? (rated.reduce((sum, book) => sum + Number(book.rating), 0) / rated.length).toFixed(1)
-    : "No ratings";
-  const genreCounts = finished
-    .flatMap((book) => String(book.genres || "").split(","))
-    .map((genre) => genre.trim())
-    .filter(Boolean)
-    .reduce((counts, genre) => ({ ...counts, [genre]: (counts[genre] || 0) + 1 }), {});
-  const topGenre = Object.entries(genreCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "Add genres";
+    ? rated.reduce((sum, book) => sum + Number(book.rating), 0) / rated.length
+    : null;
+  const genreCounts = genreCountsFor(finished);
+  const topGenreEntry = Object.entries(genreCounts).sort((a, b) => b[1] - a[1])[0];
 
   const currentlyReading = books.filter((book) => {
     if (book.status !== "reading") return false;
@@ -569,23 +572,483 @@ function renderStats() {
     return Number(book.startDate.slice(0, 4)) === year;
   });
 
+  renderStatsHero({ scopedBooks, finished, pages, averageRating, topGenreEntry, currentlyReading });
+  renderRhythmChart(finishedWithDates, { isAllTime, year });
+  renderGenreDonut(genreCounts);
+  renderRatingBars(rated);
+  renderPaceChart(finishedWithDates);
+  renderInsights({ finished, finishedWithDates, pages, averageRating, genreCounts, rated, isAllTime, year, scopedBooks });
+}
+
+function genreCountsFor(bookList) {
+  return bookList
+    .flatMap((book) => String(book.genres || "").split(","))
+    .map((genre) => genre.trim())
+    .filter(Boolean)
+    .reduce((counts, genre) => ({ ...counts, [genre]: (counts[genre] || 0) + 1 }), {});
+}
+
+const HERO_ACCENTS = ["var(--sage)", "var(--rose)", "var(--blue)"];
+
+function renderStatsHero({ scopedBooks, finished, pages, averageRating, topGenreEntry, currentlyReading }) {
+  const avgPages = finished.length ? Math.round(pages / finished.length) : 0;
+  const ratingDisplay = averageRating ? averageRating.toFixed(1) : "—";
+  const topGenre = topGenreEntry?.[0] || "Add some genres";
+
   const cards = [
-    ["Total books", scopedBooks.length],
-    ["Finished", finished.length],
-    ["Pages read", pages.toLocaleString()],
-    ["Average rating", averageRating],
-    ["Favorite genre", topGenre],
-    ["Currently reading", currentlyReading.length],
+    {
+      label: "Books finished",
+      value: finished.length,
+      note: avgPages ? `Averaging ${avgPages.toLocaleString()} pages per book` : "No finished books yet",
+    },
+    {
+      label: "Pages read",
+      value: pages.toLocaleString(),
+      note: currentlyReading.length
+        ? `${currentlyReading.length} more ${currentlyReading.length === 1 ? "book" : "books"} in progress`
+        : "Nothing in progress right now",
+    },
+    {
+      label: "Average rating",
+      value: ratingDisplay,
+      unit: averageRating ? "/ 5" : "",
+      note: topGenreEntry ? `Reaching for ${escapeHtml(topGenre)} most often` : "Add genres to see your favorite",
+    },
   ];
 
-  elements.statsGrid.innerHTML = "";
-  cards.forEach(([label, value]) => {
-    const card = document.createElement("article");
-    card.className = "stat-card";
-    card.innerHTML = `<span>${label}</span><strong>${value}</strong>`;
-    elements.statsGrid.append(card);
+  elements.statsHero.innerHTML = "";
+  cards.forEach((card, index) => {
+    const tile = document.createElement("article");
+    tile.className = "hero-stat";
+    tile.style.setProperty("--hero-accent", HERO_ACCENTS[index % HERO_ACCENTS.length]);
+    tile.innerHTML = `
+      <span class="hero-stat-label">${card.label}</span>
+      <div class="hero-stat-value">${card.value}${card.unit ? `<span class="hero-stat-unit">${card.unit}</span>` : ""}</div>
+      <span class="hero-stat-note">${card.note}</span>
+    `;
+    elements.statsHero.append(tile);
   });
 }
+
+// ---------- Reading rhythm: books finished per month, as a small bar chart ----------
+
+const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function renderRhythmChart(finishedWithDates, { isAllTime, year }) {
+  elements.rhythmChart.innerHTML = "";
+
+  const counts = new Array(12).fill(0);
+  finishedWithDates.forEach((book) => {
+    const date = new Date(`${book.finishDate}T00:00:00`);
+    if (isAllTime || date.getFullYear() === year) counts[date.getMonth()] += 1;
+  });
+
+  elements.rhythmSub.textContent = isAllTime
+    ? "Books finished each month, across every year you've logged."
+    : `Books finished each month in ${year}.`;
+
+  const max = Math.max(...counts, 1);
+  const now = new Date();
+  const isCurrentYearView = !isAllTime && year === now.getFullYear();
+
+  MONTH_LABELS.forEach((label, monthIndex) => {
+    const count = counts[monthIndex];
+    const column = document.createElement("div");
+    column.className = "rhythm-col";
+
+    const track = document.createElement("div");
+    track.className = "rhythm-bar-track";
+
+    const countLabel = document.createElement("span");
+    countLabel.className = "rhythm-count";
+    countLabel.textContent = count;
+
+    const bar = document.createElement("button");
+    bar.type = "button";
+    bar.className = `rhythm-bar${count === 0 ? " is-empty" : ""}${
+      isCurrentYearView && monthIndex === now.getMonth() ? " is-current" : ""
+    }`;
+    const heightPercent = count === 0 ? 3 : Math.max(6, (count / max) * 100);
+    bar.style.height = `${heightPercent}%`;
+    bar.setAttribute(
+      "aria-label",
+      `${count} ${count === 1 ? "book" : "books"} finished in ${label}${isAllTime ? "" : ` ${year}`}`
+    );
+    if (count > 0) {
+      bar.addEventListener("click", () => openMonthInLibrary(monthIndex, isAllTime ? null : year));
+    } else {
+      bar.disabled = true;
+    }
+
+    track.append(bar);
+    column.append(countLabel, track);
+
+    const monthLabel = document.createElement("span");
+    monthLabel.className = "rhythm-col-label";
+    monthLabel.textContent = label;
+    column.append(monthLabel);
+
+    elements.rhythmChart.append(column);
+  });
+}
+
+function openMonthInLibrary(monthIndex, year) {
+  elements.globalSearch.value = "";
+  elements.statusFilter.value = "finished";
+  setView("library");
+  render();
+  // The library view doesn't have its own month filter, so the search box is the
+  // most direct way to land the person on the right slice of their finished books.
+  const monthName = new Date(year || new Date().getFullYear(), monthIndex, 1).toLocaleDateString(undefined, {
+    month: "long",
+  });
+  elements.globalSearch.placeholder = `Showing books finished in ${monthName}${year ? ` ${year}` : ""}`;
+}
+
+// ---------- Genre donut ----------
+
+const DONUT_COLORS = ["#a8bca4", "#b6c9d8", "#dfb7ad", "#c8bed9", "#ead9a9", "#9bb0c2", "#c79f93", "#8fa68b"];
+const DONUT_PREVIEW_LIMIT = 7;
+
+function renderGenreDonut(genreCounts) {
+  const wrap = elements.genreDonutWrap;
+  wrap.innerHTML = "";
+
+  const entries = Object.entries(genreCounts).sort((a, b) => b[1] - a[1]);
+  if (!entries.length) {
+    wrap.innerHTML = '<p class="genre-empty">Add genres to your finished books to see a breakdown here.</p>';
+    return;
+  }
+
+  const top = entries.slice(0, DONUT_PREVIEW_LIMIT);
+  const rest = entries.slice(DONUT_PREVIEW_LIMIT);
+  const restTotal = rest.reduce((sum, [, count]) => sum + count, 0);
+  const slices = restTotal ? [...top, ["Other", restTotal]] : top;
+  const total = slices.reduce((sum, [, count]) => sum + count, 0);
+
+  const size = 168;
+  const radius = 70;
+  const center = size / 2;
+  const circumference = 2 * Math.PI * radius;
+
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", `0 0 ${size} ${size}`);
+  svg.setAttribute("class", "genre-donut");
+  svg.setAttribute("width", size);
+  svg.setAttribute("height", size);
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", "Genre breakdown of finished books");
+
+  let offset = 0;
+  slices.forEach(([genre, count], index) => {
+    const fraction = count / total;
+    const dash = fraction * circumference;
+    const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    circle.setAttribute("cx", center);
+    circle.setAttribute("cy", center);
+    circle.setAttribute("r", radius);
+    circle.setAttribute("fill", "none");
+    circle.setAttribute("stroke", DONUT_COLORS[index % DONUT_COLORS.length]);
+    circle.setAttribute("stroke-width", 26);
+    circle.setAttribute("stroke-dasharray", `${dash} ${circumference - dash}`);
+    circle.setAttribute("stroke-dashoffset", -offset);
+    circle.setAttribute("transform", `rotate(-90 ${center} ${center})`);
+    circle.setAttribute("tabindex", "0");
+    circle.classList.add("genre-slice");
+    const percent = Math.round(fraction * 100);
+    circle.setAttribute("aria-label", `${genre}: ${count} ${count === 1 ? "book" : "books"}, ${percent}%`);
+    if (genre !== "Other") {
+      circle.style.cursor = "pointer";
+      circle.addEventListener("click", () => openGenreInLibrary(genre));
+    }
+    svg.append(circle);
+    offset += dash;
+  });
+
+  const centerLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
+  centerLabel.setAttribute("x", center);
+  centerLabel.setAttribute("y", center - 4);
+  centerLabel.setAttribute("text-anchor", "middle");
+  centerLabel.setAttribute("class", "genre-donut-center");
+  centerLabel.innerHTML = `<tspan x="${center}" dy="0" font-size="22" font-weight="700" fill="var(--ink)">${total}</tspan><tspan x="${center}" dy="16" font-size="10" fill="var(--muted)">finished</tspan>`;
+  svg.append(centerLabel);
+
+  const donutFigure = document.createElement("div");
+  donutFigure.append(svg);
+  wrap.append(donutFigure);
+
+  const legend = document.createElement("div");
+  legend.className = "genre-legend";
+  slices.forEach(([genre, count], index) => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "genre-legend-item";
+    item.innerHTML = `
+      <span class="legend-swatch" style="background:${DONUT_COLORS[index % DONUT_COLORS.length]}"></span>
+      <span class="legend-label">${escapeHtml(genre)}</span>
+      <span class="legend-count">${count}</span>
+    `;
+    if (genre !== "Other") item.addEventListener("click", () => openGenreInLibrary(genre));
+    else item.disabled = true;
+    legend.append(item);
+  });
+  wrap.append(legend);
+}
+
+function openGenreInLibrary(genre) {
+  elements.globalSearch.value = genre;
+  elements.statusFilter.value = "all";
+  setView("library");
+  render();
+}
+
+// ---------- Rating distribution ----------
+
+function renderRatingBars(rated) {
+  elements.ratingBars.innerHTML = "";
+
+  if (!rated.length) {
+    elements.ratingBars.innerHTML = '<p class="rating-empty">Rate a finished book and your distribution will show up here.</p>';
+    return;
+  }
+
+  const buckets = [5, 4.5, 4, 3.5, 3, 2.5, 2, 1.5, 1, 0.5];
+  const counts = buckets.map((value) => rated.filter((book) => Number(book.rating) === value).length);
+  const max = Math.max(...counts, 1);
+
+  buckets.forEach((value, index) => {
+    const count = counts[index];
+    const row = document.createElement("div");
+    row.className = "rating-row";
+    row.innerHTML = `
+      <span class="rating-row-label">${starGlyphs(value)}</span>
+      <span class="rating-row-track"><span class="rating-row-fill" style="width:${count ? Math.max(4, (count / max) * 100) : 0}%"></span></span>
+      <span class="rating-row-count">${count}</span>
+    `;
+    elements.ratingBars.append(row);
+  });
+}
+
+function starGlyphs(value) {
+  const full = Math.floor(value);
+  const half = value % 1 !== 0;
+  return "★".repeat(full) + (half ? "½" : "");
+}
+
+// ---------- Pace: days spent reading vs. page count, as a scatter ----------
+
+function renderPaceChart(finishedWithDates) {
+  const container = elements.paceChart;
+  container.innerHTML = "";
+
+  const timed = finishedWithDates
+    .filter((book) => book.startDate && book.finishDate && book.startDate <= book.finishDate)
+    .map((book) => ({
+      book,
+      days: Math.max(1, daysBetween(book.startDate, book.finishDate)),
+      pages: Number(book.pages || 0),
+    }))
+    .filter((entry) => entry.pages > 0);
+
+  if (timed.length < 2) {
+    container.innerHTML = '<p class="pace-empty">Log a start and finish date on a couple more books to see your pace here.</p>';
+    return;
+  }
+
+  const width = 100;
+  const height = 100;
+  const maxDays = Math.max(...timed.map((entry) => entry.days)) * 1.08;
+  const maxPages = Math.max(...timed.map((entry) => entry.pages)) * 1.08;
+
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  svg.setAttribute("preserveAspectRatio", "none");
+  svg.setAttribute("class", "pace-svg");
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", "Scatter plot of days spent reading versus page count");
+
+  [0.25, 0.5, 0.75].forEach((fraction) => {
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    line.setAttribute("x1", 0);
+    line.setAttribute("x2", width);
+    line.setAttribute("y1", height * fraction);
+    line.setAttribute("y2", height * fraction);
+    line.setAttribute("class", "pace-gridline");
+    line.setAttribute("vector-effect", "non-scaling-stroke");
+    svg.append(line);
+  });
+
+  const tooltip = document.createElement("div");
+  tooltip.className = "pace-tooltip";
+  container.append(tooltip);
+
+  timed.forEach(({ book, days, pages }) => {
+    const x = (days / maxDays) * width;
+    const y = height - (pages / maxPages) * height;
+    const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    dot.setAttribute("cx", x);
+    dot.setAttribute("cy", y);
+    dot.setAttribute("r", 2.6);
+    dot.setAttribute("vector-effect", "non-scaling-stroke");
+    dot.setAttribute("class", "pace-dot");
+    dot.setAttribute("tabindex", "0");
+    dot.setAttribute("aria-label", `${book.title}: ${days} ${days === 1 ? "day" : "days"}, ${pages} pages`);
+
+    const showTooltip = (event) => {
+      const rect = container.getBoundingClientRect();
+      const point = event.target.getBoundingClientRect();
+      tooltip.textContent = `${book.title} — ${days} ${days === 1 ? "day" : "days"}, ${pages} pages`;
+      tooltip.style.left = `${point.left - rect.left + point.width / 2}px`;
+      tooltip.style.top = `${point.top - rect.top}px`;
+      tooltip.classList.add("is-visible");
+    };
+    const hideTooltip = () => tooltip.classList.remove("is-visible");
+
+    dot.addEventListener("mouseenter", showTooltip);
+    dot.addEventListener("mousemove", showTooltip);
+    dot.addEventListener("mouseleave", hideTooltip);
+    dot.addEventListener("focus", showTooltip);
+    dot.addEventListener("blur", hideTooltip);
+    dot.addEventListener("click", () => openBook(book.id));
+
+    svg.append(dot);
+  });
+
+  container.append(svg);
+
+  const avgDays = Math.round(timed.reduce((sum, entry) => sum + entry.days, 0) / timed.length);
+  const avgPagesPerDay = Math.round(timed.reduce((sum, entry) => sum + entry.pages / entry.days, 0) / timed.length);
+  const summary = document.createElement("p");
+  summary.className = "pace-summary";
+  summary.textContent = `On average, ${avgDays} ${avgDays === 1 ? "day" : "days"} per book, around ${avgPagesPerDay} pages a day.`;
+  container.append(summary);
+}
+
+function daysBetween(startDate, finishDate) {
+  const start = new Date(`${startDate}T00:00:00`);
+  const finish = new Date(`${finishDate}T00:00:00`);
+  return Math.round((finish - start) / 86400000);
+}
+
+// ---------- Dynamic insights: a handful of plain-language observations ----------
+
+function renderInsights({ finished, finishedWithDates, pages, averageRating, genreCounts, rated, isAllTime, year, scopedBooks }) {
+  const insights = [];
+
+  // Busiest month
+  if (finishedWithDates.length) {
+    const counts = new Map();
+    finishedWithDates.forEach((book) => {
+      const date = new Date(`${book.finishDate}T00:00:00`);
+      if (!isAllTime && date.getFullYear() !== year) return;
+      const key = isAllTime
+        ? `${date.getFullYear()}-${date.getMonth()}`
+        : String(date.getMonth());
+      counts.set(key, (counts.get(key) || 0) + 1);
+    });
+    const busiest = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
+    if (busiest && busiest[1] > 1) {
+      const [key, count] = busiest;
+      const label = isAllTime
+        ? new Date(Number(key.split("-")[0]), Number(key.split("-")[1]), 1).toLocaleDateString(undefined, {
+            month: "long",
+            year: "numeric",
+          })
+        : new Date(year, Number(key), 1).toLocaleDateString(undefined, { month: "long" });
+      insights.push({
+        glyph: "📚",
+        html: `Your busiest stretch was <strong>${label}</strong>, with <strong>${count} books</strong> finished.`,
+      });
+    }
+  }
+
+  // Top genre
+  const topGenres = Object.entries(genreCounts).sort((a, b) => b[1] - a[1]);
+  if (topGenres.length) {
+    const [genre, count] = topGenres[0];
+    const share = Math.round((count / finished.length) * 100);
+    insights.push({
+      glyph: "🌿",
+      html: `<strong>${escapeHtml(genre)}</strong> made up about <strong>${share}%</strong> of what you finished.`,
+    });
+  }
+
+  // Fastest read
+  const timed = finishedWithDates
+    .filter((book) => book.startDate && book.finishDate && book.startDate <= book.finishDate && Number(book.pages) > 0)
+    .map((book) => ({ book, days: Math.max(1, daysBetween(book.startDate, book.finishDate)) }));
+  if (timed.length) {
+    const fastest = [...timed].sort((a, b) => a.days - b.days)[0];
+    insights.push({
+      glyph: "⚡",
+      html: `<strong>${escapeHtml(fastest.book.title)}</strong> was your fastest read this period, finished in <strong>${
+        fastest.days
+      } ${fastest.days === 1 ? "day" : "days"}</strong>.`,
+    });
+  }
+
+  // Highest rated
+  if (rated.length) {
+    const top = [...rated].sort((a, b) => Number(b.rating) - Number(a.rating))[0];
+    insights.push({
+      glyph: "✨",
+      html: `<strong>${escapeHtml(top.title)}</strong> is your highest-rated finish, at <strong>${
+        top.rating
+      } stars</strong>.`,
+    });
+  }
+
+  // Longest book
+  const withPages = finished.filter((book) => Number(book.pages) > 0);
+  if (withPages.length) {
+    const longest = [...withPages].sort((a, b) => Number(b.pages) - Number(a.pages))[0];
+    insights.push({
+      glyph: "📖",
+      html: `The longest book you finished was <strong>${escapeHtml(longest.title)}</strong> at <strong>${Number(
+        longest.pages
+      ).toLocaleString()} pages</strong>.`,
+    });
+  }
+
+  // Pace trend (compare first half vs second half of the scoped period, all-time only meaningful with enough data)
+  if (timed.length >= 4) {
+    const sorted = [...timed].sort(
+      (a, b) => new Date(`${a.book.finishDate}T00:00:00`) - new Date(`${b.book.finishDate}T00:00:00`)
+    );
+    const midpoint = Math.floor(sorted.length / 2);
+    const earlierAvg = average(sorted.slice(0, midpoint).map((entry) => entry.days));
+    const laterAvg = average(sorted.slice(midpoint).map((entry) => entry.days));
+    if (laterAvg < earlierAvg * 0.85) {
+      insights.push({ glyph: "📈", html: `You've been reading <strong>faster lately</strong> than earlier in this period.` });
+    } else if (laterAvg > earlierAvg * 1.15) {
+      insights.push({ glyph: "📉", html: `Your pace has <strong>slowed a little</strong> compared to earlier in this period.` });
+    }
+  }
+
+  // Fallback if nothing else qualified
+  if (!insights.length) {
+    insights.push({
+      glyph: "🌱",
+      html: scopedBooks.length
+        ? "Finish a few more books to start seeing patterns in your reading."
+        : "Add and finish some books to see insights appear here.",
+    });
+  }
+
+  elements.insightsList.innerHTML = "";
+  insights.slice(0, 6).forEach((insight) => {
+    const item = document.createElement("li");
+    item.className = "insight-card";
+    item.innerHTML = `<span class="insight-glyph" aria-hidden="true">${insight.glyph}</span><p class="insight-text">${insight.html}</p>`;
+    elements.insightsList.append(item);
+  });
+}
+
+function average(values) {
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+
 
 function renderMonthSummary() {
   const year = calendarDate.getFullYear();

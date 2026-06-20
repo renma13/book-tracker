@@ -134,8 +134,62 @@
             </div>
             <select id="statsYearFilter" aria-label="Filter stats by year"></select>
           </div>
-          <div class="stats-grid" id="statsGrid"></div>
+
+          <div class="stats-hero" id="statsHero"></div>
+
+          <div class="stats-panels">
+            <section class="stats-panel stats-panel-wide" aria-labelledby="rhythmHeading">
+              <div class="stats-panel-head">
+                <div>
+                  <h4 id="rhythmHeading">Reading rhythm</h4>
+                  <p id="rhythmSub">Books finished each month.</p>
+                </div>
+              </div>
+              <div class="rhythm-chart" id="rhythmChart"></div>
+            </section>
+
+            <section class="stats-panel" aria-labelledby="genreHeading">
+              <div class="stats-panel-head">
+                <div>
+                  <h4 id="genreHeading">Genres</h4>
+                  <p>What you've been reaching for.</p>
+                </div>
+              </div>
+              <div class="genre-donut-wrap" id="genreDonutWrap"></div>
+            </section>
+
+            <section class="stats-panel" aria-labelledby="ratingHeading">
+              <div class="stats-panel-head">
+                <div>
+                  <h4 id="ratingHeading">Ratings</h4>
+                  <p>How you felt about what you finished.</p>
+                </div>
+              </div>
+              <div class="rating-bars" id="ratingBars"></div>
+            </section>
+
+            <section class="stats-panel" aria-labelledby="paceHeading">
+              <div class="stats-panel-head">
+                <div>
+                  <h4 id="paceHeading">Pace</h4>
+                  <p>Days spent per finished book.</p>
+                </div>
+              </div>
+              <div class="pace-chart" id="paceChart"></div>
+            </section>
+
+            <section class="stats-panel stats-panel-wide" aria-labelledby="insightsHeading">
+              <div class="stats-panel-head">
+                <div>
+                  <h4 id="insightsHeading">Insights</h4>
+                  <p>What the numbers are telling you.</p>
+                </div>
+              </div>
+              <ul class="insights-list" id="insightsList"></ul>
+            </section>
+          </div>
         </section>
+
       </main>
     </div>
 
