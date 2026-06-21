@@ -92,8 +92,11 @@
 
           <div class="reading-spotlight" id="readingSpotlight" hidden>
             <div class="spotlight-heading">
-              <h3>Currently reading</h3>
-              <p>Picked up and still in progress.</p>
+              <div class="spotlight-heading-text">
+                <h3>Currently reading</h3>
+                <p>Picked up and still in progress.</p>
+              </div>
+              <span class="spotlight-count" id="spotlightCount"></span>
             </div>
             <div class="spotlight-grid" id="spotlightGrid"></div>
           </div>
@@ -305,6 +308,35 @@
           </div>
         </div>
       </form>
+    </dialog>
+
+    <dialog id="bookDetailDialog">
+      <div class="dialog-card book-detail-card">
+        <div class="dialog-header">
+          <div>
+            <p class="eyebrow">Book details</p>
+            <h2 class="sr-only">Book</h2>
+          </div>
+          <button class="icon-button" type="button" id="closeBookDetail" aria-label="Close">×</button>
+        </div>
+
+        <div class="book-detail-top">
+          <div class="book-detail-cover" id="bookDetailCover"></div>
+          <div class="book-detail-heading">
+            <span class="status-pill" id="bookDetailStatus"></span>
+            <h3 id="bookDetailTitle"></h3>
+            <p class="book-detail-author" id="bookDetailAuthor"></p>
+            <div class="book-detail-rating" id="bookDetailRating"></div>
+            <div class="meta-line" id="bookDetailMeta"></div>
+            <div class="book-detail-tags" id="bookDetailGenres"></div>
+            <div class="book-detail-tags" id="bookDetailTags"></div>
+            <p class="book-detail-dates" id="bookDetailDates"></p>
+            <button class="primary-button" type="button" id="editBookFromDetail">Edit entry</button>
+          </div>
+        </div>
+
+        <div class="book-detail-notes" id="bookDetailNotes"></div>
+      </div>
     </dialog>
 
     <dialog id="manageStatusesDialog">

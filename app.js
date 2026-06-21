@@ -131,6 +131,7 @@ const elements = {
   bookGrid: $("#bookGrid"),
   readingSpotlight: $("#readingSpotlight"),
   spotlightGrid: $("#spotlightGrid"),
+  spotlightCount: $("#spotlightCount"),
   libraryDivider: $("#libraryDivider"),
   shelfBoard: $("#shelfBoard"),
   bookshelfStage: $("#bookshelfStage"),
@@ -179,6 +180,18 @@ const elements = {
   syncDot: $("#syncDot"),
   syncButtonLabel: $("#syncButtonLabel"),
   disconnectSync: $("#disconnectSync"),
+  bookDetailDialog: $("#bookDetailDialog"),
+  bookDetailCover: $("#bookDetailCover"),
+  bookDetailStatus: $("#bookDetailStatus"),
+  bookDetailTitle: $("#bookDetailTitle"),
+  bookDetailAuthor: $("#bookDetailAuthor"),
+  bookDetailRating: $("#bookDetailRating"),
+  bookDetailMeta: $("#bookDetailMeta"),
+  bookDetailGenres: $("#bookDetailGenres"),
+  bookDetailTags: $("#bookDetailTags"),
+  bookDetailDates: $("#bookDetailDates"),
+  bookDetailNotes: $("#bookDetailNotes"),
+  editBookFromDetail: $("#editBookFromDetail"),
 };
 
 function loadBooks() {
@@ -215,6 +228,34 @@ function render() {
   renderBookshelf();
   renderStats();
   renderMonthSummary();
+  hydrateCoverThumbnailsStaggered(document.body);
+}
+
+// Resolves cover thumbnails in small batches across a few animation frames instead of
+// kicking off every image load in the same tick. A full render() can touch the same
+// book's cover in several places at once (calendar, library, shelves, bookshelf), so
+// batching keeps the browser from being asked to start dozens of decodes simultaneously
+// right after a view switch or search.
+const COVER_HYDRATE_BATCH_SIZE = 12;
+
+function hydrateCoverThumbnailsStaggered(container) {
+  const images = [...container.querySelectorAll("img[data-cover-src]")];
+  if (!images.length) return;
+
+  let index = 0;
+  const processBatch = () => {
+    const batch = images.slice(index, index + COVER_HYDRATE_BATCH_SIZE);
+    batch.forEach((image) => {
+      const url = image.dataset.coverSrc;
+      getCoverThumbnail(url, (dataUrl) => {
+        image.src = dataUrl;
+      });
+    });
+    index += COVER_HYDRATE_BATCH_SIZE;
+    if (index < images.length) requestAnimationFrame(processBatch);
+  };
+
+  requestAnimationFrame(processBatch);
 }
 
 function renderStatusOptions() {
@@ -365,6 +406,8 @@ function openDayBooks(dateKey, entries) {
     elements.dayBooksList.append(row);
   });
 
+  hydrateCoverThumbnailsStaggered(elements.dayBooksList);
+
   elements.dayBooksList.addEventListener(
     "click",
     () => elements.dayBooksDialog.close(),
@@ -384,7 +427,10 @@ function renderLibrary() {
   elements.readingSpotlight.hidden = !showSpotlight;
   elements.spotlightGrid.innerHTML = "";
   if (showSpotlight) {
-    readingBooks.forEach((book) => elements.spotlightGrid.append(bookCard(book, { featured: true })));
+    readingBooks.forEach((book) => elements.spotlightGrid.append(spotlightCard(book)));
+  }
+  if (elements.spotlightCount) {
+    elements.spotlightCount.textContent = `${readingBooks.length} ${readingBooks.length === 1 ? "book" : "books"}`;
   }
 
   const restOfLibrary = searchedBooks.filter((book) => {
@@ -409,41 +455,83 @@ function renderLibrary() {
   restOfLibrary.forEach((book) => elements.bookGrid.append(bookCard(book)));
 }
 
-const SHELF_PREVIEW_LIMIT = 5;
+const SHELF_PREVIEW_LIMIT = 10;
 
 function renderShelves() {
   elements.shelfBoard.innerHTML = "";
 
   statuses.forEach((status) => {
-    const column = document.createElement("section");
-    column.className = "shelf-column";
+    const row = document.createElement("section");
+    row.className = "shelf-row";
+    row.style.setProperty("--row-accent", status.color);
+
     const shelfBooks = filteredBooks().filter((book) => book.status === status.id);
     const previewBooks = shelfBooks.slice(0, SHELF_PREVIEW_LIMIT);
 
-    column.innerHTML = `
-      <div class="shelf-heading">
+    const head = document.createElement("div");
+    head.className = "shelf-row-head";
+    head.innerHTML = `
+      <div class="shelf-row-heading">
+        <span class="shelf-row-dot" aria-hidden="true"></span>
         <h4>${escapeHtml(status.label)}</h4>
-        <span style="background:${status.color}; color:${statusTextColor(status.color)}">${shelfBooks.length}</span>
+        <span class="shelf-row-count">${shelfBooks.length} ${shelfBooks.length === 1 ? "book" : "books"}</span>
       </div>
     `;
 
-    const list = document.createElement("div");
-    list.className = "shelf-list";
-    previewBooks.forEach((book) => list.append(compactBook(book)));
-    if (!shelfBooks.length) list.append(emptyState("Nothing on this shelf yet."));
-    column.append(list);
-
     if (shelfBooks.length > SHELF_PREVIEW_LIMIT) {
-      const seeMore = document.createElement("button");
-      seeMore.type = "button";
-      seeMore.className = "ghost-button shelf-see-more";
-      seeMore.textContent = `See all ${shelfBooks.length}`;
-      seeMore.addEventListener("click", () => openShelfInLibrary(status.id));
-      column.append(seeMore);
+      const seeAll = document.createElement("button");
+      seeAll.type = "button";
+      seeAll.className = "shelf-row-seeall";
+      seeAll.innerHTML = `See all <span aria-hidden="true">&rarr;</span>`;
+      seeAll.addEventListener("click", () => openShelfInLibrary(status.id));
+      head.append(seeAll);
     }
 
-    elements.shelfBoard.append(column);
+    row.append(head);
+
+    if (!shelfBooks.length) {
+      const empty = document.createElement("p");
+      empty.className = "shelf-row-empty";
+      empty.textContent = "No books here yet.";
+      row.append(empty);
+    } else {
+      const scroll = document.createElement("div");
+      scroll.className = "shelf-row-scroll";
+      previewBooks.forEach((book) => scroll.append(shelfCoverCard(book)));
+      row.append(scroll);
+    }
+
+    elements.shelfBoard.append(row);
   });
+}
+
+// A flat, face-out cover card used in the Shelves rows: cover, a thin accent
+// line in the shelf's status color, title, author. No tilt or skeuomorphism —
+// just a clean cover-forward list a person can scan quickly.
+function shelfCoverCard(book) {
+  const card = document.createElement("article");
+  card.className = "shelf-cover-card";
+  card.setAttribute("role", "button");
+  card.setAttribute("tabindex", "0");
+  card.setAttribute("aria-label", `Open ${book.title}`);
+
+  card.innerHTML = `
+    <div class="shelf-cover">${coverMarkup(book)}</div>
+    <span class="shelf-cover-accent" aria-hidden="true"></span>
+    <h5 class="shelf-cover-title">${escapeHtml(book.title)}</h5>
+    <p class="shelf-cover-author">${escapeHtml(book.author || "Unknown author")}</p>
+  `;
+
+  const open = () => openBook(book.id);
+  card.addEventListener("click", open);
+  card.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      open();
+    }
+  });
+
+  return card;
 }
 
 function openShelfInLibrary(statusId) {
@@ -835,6 +923,16 @@ function starGlyphs(value) {
   return "★".repeat(full) + (half ? "½" : "");
 }
 
+// Like starGlyphs, but pads out to 5 stars total using an outline glyph for the
+// remaining (unfilled) slots — used on the book detail page where the rating
+// should always read as "X filled out of 5", not just the filled count.
+function starGlyphsOutOfFive(value) {
+  const full = Math.floor(value);
+  const half = value % 1 !== 0;
+  const empty = Math.max(0, 5 - full - (half ? 1 : 0));
+  return "★".repeat(full) + (half ? "½" : "") + "☆".repeat(empty);
+}
+
 // ---------- Pace: days spent reading vs. page count, as a scatter ----------
 
 function renderPaceChart(finishedWithDates) {
@@ -1093,10 +1191,10 @@ function renderMonthSummary() {
   elements.monthPages.textContent = `${pages.toLocaleString()} pages logged`;
 }
 
-function bookCard(book, { featured = false } = {}) {
+function bookCard(book) {
   const card = document.createElement("article");
   const isReading = book.status === "reading";
-  card.className = `book-card${isReading ? " status-reading" : ""}${featured ? " book-card-featured" : ""}`;
+  card.className = `book-card${isReading ? " status-reading" : ""}`;
   card.innerHTML = `
     <div class="cover-wrap">${coverMarkup(book)}</div>
     <div class="book-card-body">
@@ -1112,6 +1210,93 @@ function bookCard(book, { featured = false } = {}) {
   `;
   card.addEventListener("click", () => openBook(book.id));
   return card;
+}
+
+// ---------- Currently-reading spotlight card ----------
+//
+// A book "propped on the windowsill": a bigger cover with a soft ambient glow
+// sampled from its own artwork, a status ribbon pulled from the same colors
+// used everywhere else (Shelves, status pills), and a real day-count instead
+// of a fabricated progress bar, since the app has no actual page-progress data
+// to back one up.
+
+function spotlightCard(book) {
+  const card = document.createElement("article");
+  card.className = "spotlight-card";
+  card.style.setProperty("--tilt", `${spotlightTilt(book)}deg`);
+  card.setAttribute("role", "button");
+  card.setAttribute("tabindex", "0");
+  card.setAttribute("aria-label", `Open ${book.title}`);
+
+  const topGenre = splitTagList(book.genres)[0];
+  const statusBg = statusColor(book.status);
+  const statusFg = statusTextColor(statusBg);
+  const dayLabel = spotlightDayLabel(book);
+
+  card.innerHTML = `
+    <div class="spotlight-glow" aria-hidden="true"></div>
+    <div class="spotlight-cover-wrap">
+      <span class="spotlight-ribbon" style="background:${statusBg}; color:${statusFg}">${escapeHtml(statusLabel(book.status))}</span>
+      <div class="spotlight-cover">${coverMarkup(book)}</div>
+    </div>
+    <div class="spotlight-info">
+      <h4>${escapeHtml(book.title)}</h4>
+      <p class="spotlight-author">${escapeHtml(book.author || "Unknown author")}</p>
+      ${topGenre ? `<span class="spotlight-genre">${escapeHtml(topGenre)}</span>` : ""}
+      <div class="spotlight-meta">
+        <span class="spotlight-day">${escapeHtml(dayLabel)}</span>
+        ${book.pages ? `<span>${book.pages} pages</span>` : ""}
+      </div>
+    </div>
+  `;
+
+  const open = () => openBook(book.id);
+  card.addEventListener("click", open);
+  card.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      open();
+    }
+  });
+
+  applySpotlightGlow(book, card);
+  return card;
+}
+
+// A small, deterministic lean per book (same idea as the bookshelf spines) so
+// the row reads as books set down by hand rather than printed in a line.
+function spotlightTilt(book) {
+  const raw = hashString(`spotlight:${book.id || book.title}`) % 100;
+  const degrees = 1 + (raw % 10) / 5; // ~1-3deg
+  return raw % 2 === 0 ? degrees : -degrees;
+}
+
+function spotlightDayLabel(book) {
+  if (!book.startDate) return "Just picked up";
+  const today = toDateInput(new Date());
+  if (book.startDate > today) return "Starting soon";
+  const days = daysBetween(book.startDate, today) + 1;
+  return days <= 1 ? "Started today" : `Day ${days}`;
+}
+
+// Samples the cover's dominant color, reusing the same cached thumbnail and
+// extraction logic the bookshelf spines use, and stores it as an rgb triple
+// on the card so the ambient glow behind the cover is drawn from the actual
+// artwork instead of one fixed color for every book.
+function applySpotlightGlow(book, card) {
+  if (!book.cover) return;
+  getCoverThumbnail(book.cover, (dataUrl) => {
+    const image = new Image();
+    image.onload = () => {
+      try {
+        const [r, g, b] = colorToRgb(dominantImageColor(image));
+        card.style.setProperty("--glow-color", `${r}, ${g}, ${b}`);
+      } catch {
+        // Keep the default glow color if sampling fails.
+      }
+    };
+    image.src = dataUrl;
+  });
 }
 
 function compactBook(book, { badgeText = "", badgeClass = "" } = {}) {
@@ -1134,17 +1319,39 @@ function bookSpine(book, index) {
   const spine = document.createElement("button");
   spine.type = "button";
   spine.className = "book-spine";
+
+  const fallback = fallbackSpineColor(book, index);
   spine.style.setProperty("--spine-height", `${spineHeight(book)}px`);
   spine.style.setProperty("--spine-width", `${spineWidth(book)}px`);
-  spine.style.setProperty("--spine-color", fallbackSpineColor(book, index));
-  spine.style.setProperty("--spine-shade", shadeColor(fallbackSpineColor(book, index), -22));
+  spine.style.setProperty("--spine-color", fallback);
+  spine.style.setProperty("--spine-edge", shadeColor(fallback, -32));
+  spine.style.setProperty("--spine-ink", spineInkColor(fallback));
+  spine.style.setProperty("--spine-grain", spineGrainImage(index));
+  spine.style.setProperty("--spine-tilt", `${spineTilt(book)}deg`);
+
+  const rating = Number(book.rating || 0);
+  if (rating >= 4) {
+    spine.style.setProperty("--spine-gilt-color", "#d9b96a");
+    spine.style.setProperty("--spine-gilt-opacity", rating >= 4.5 ? "0.85" : "0.55");
+  }
+
   spine.innerHTML = `
     <span class="spine-title">${escapeHtml(book.title)}</span>
+    <span class="spine-gilt" aria-hidden="true"></span>
     <span class="spine-author">${escapeHtml(book.author || "Unknown")}</span>
   `;
   applyCoverColor(book, spine);
   spine.addEventListener("click", () => openBook(book.id));
   return spine;
+}
+
+// A very small, deterministic lean (never more than a couple degrees) so the row
+// reads as books that were placed by hand rather than printed in a perfect line.
+function spineTilt(book) {
+  const raw = hashString(`tilt:${book.id || book.title}`) % 100;
+  if (raw < 70) return 0; // most books still sit straight
+  const degrees = 0.6 + (raw % 14) / 10; // ~0.6–1.9deg
+  return raw % 2 === 0 ? degrees : -degrees;
 }
 
 function spineHeight(book) {
@@ -1153,9 +1360,98 @@ function spineHeight(book) {
   return Math.round(pageBaseline + jitter);
 }
 
+
+// ---------- Cover thumbnail cache ----------
+//
+// Cover URLs can point to images of any size — Open Library "-L" covers, or anything
+// a person pastes in manually. Rendering them at full size into a 38–160px slot still
+// costs a full download + decode of the original. Instead, the first time a cover URL
+// is used anywhere in the app, we draw it once into a small canvas, cache the
+// downscaled result (a data URL) in memory, and reuse that small version everywhere
+// for the rest of the session — regardless of how large the source image actually is.
+//
+// Canvas pixel-reading requires the image's host to allow cross-origin reads (CORS).
+// Most do, but some don't. When that happens we cannot legally read the pixels, so we
+// fall back to just letting the browser display the original image directly — slower,
+// but still correct and visible.
+
+// 160x240 CSS px is the largest real slot (book detail cover). On a 2x retina screen
+// that needs ~320x480 device pixels to render crisp — 480 (with a little headroom)
+// keeps every view sharp on standard and high-DPI screens without caching full-size
+// originals that are often 4-10x larger than anything ever displayed.
+const COVER_THUMB_SIZE = 480;
+const coverThumbCache = new Map(); // cover URL -> { status: "ready"|"unsupported", dataUrl? }
+const coverThumbListeners = new Map(); // cover URL -> Set of callbacks waiting on it
+
+function getCoverThumbnail(url, onReady) {
+  const cached = coverThumbCache.get(url);
+  if (cached) {
+    if (cached.status === "ready") onReady(cached.dataUrl);
+    return;
+  }
+
+  if (coverThumbListeners.has(url)) {
+    coverThumbListeners.get(url).add(onReady);
+    return;
+  }
+
+  coverThumbListeners.set(url, new Set([onReady]));
+
+  const image = new Image();
+  image.crossOrigin = "anonymous";
+
+  image.onload = () => {
+    let dataUrl = null;
+    try {
+      dataUrl = downscaleImageToDataUrl(image, COVER_THUMB_SIZE);
+    } catch {
+      // Cross-origin pixel read blocked by the image host (no CORS). Mark unsupported
+      // so callers fall back to the original <img src> instead of retrying forever.
+    }
+
+    if (dataUrl) {
+      coverThumbCache.set(url, { status: "ready", dataUrl });
+      coverThumbListeners.get(url)?.forEach((callback) => callback(dataUrl));
+    } else {
+      coverThumbCache.set(url, { status: "unsupported" });
+    }
+    coverThumbListeners.delete(url);
+  };
+
+  image.onerror = () => {
+    coverThumbCache.set(url, { status: "unsupported" });
+    coverThumbListeners.delete(url);
+  };
+
+  image.src = url;
+}
+
+// Downscales to a max dimension while preserving aspect ratio, so portrait covers of
+// any source size end up as a small, consistent JPEG suitable for thumbnails.
+function downscaleImageToDataUrl(image, maxDimension) {
+  const longestSide = Math.max(image.naturalWidth, image.naturalHeight);
+  const scale = Math.min(1, maxDimension / (longestSide || maxDimension));
+  const width = Math.max(1, Math.round(image.naturalWidth * scale));
+  const height = Math.max(1, Math.round(image.naturalHeight * scale));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  context.drawImage(image, 0, 0, width, height);
+
+  // toDataURL throws (security error) if the canvas got cross-origin pixels it
+  // wasn't allowed to read; that throw is caught by the caller.
+  return canvas.toDataURL("image/jpeg", 0.85);
+}
+
 function coverMarkup(book) {
   if (book.cover) {
-    return `<img src="${escapeAttribute(book.cover)}" alt="Cover of ${escapeAttribute(book.title)}" loading="lazy" />`;
+    const escapedUrl = escapeAttribute(book.cover);
+    const escapedAlt = `Cover of ${escapeAttribute(book.title)}`;
+    // Render with the original URL immediately (so something shows right away), then
+    // swap to the cached small thumbnail once it's ready via data-cover-src matching.
+    return `<img src="${escapedUrl}" data-cover-src="${escapedUrl}" alt="${escapedAlt}" loading="lazy" decoding="async" />`;
   }
 
   return `<div class="cover-placeholder" aria-hidden="true">${escapeHtml((book.title || "?").slice(0, 1))}</div>`;
@@ -1178,10 +1474,85 @@ function openAddBook(date = "") {
   elements.deleteBook.hidden = true;
   elements.deleteConfirm.hidden = true;
   elements.lookupResults.innerHTML = "";
+  elements.dialog.dataset.returnTo = "";
+  elements.dialog.dataset.returnBookId = "";
   elements.dialog.showModal();
 }
 
+// Opens the read-only "book detail" page for a book. This is what every book
+// click (library card, shelf row, bookshelf spine, calendar cover, pace dot)
+// should lead to. Use openBookEdit() to jump straight into the editable form.
 function openBook(id) {
+  const book = books.find((item) => item.id === id);
+  if (!book) return;
+
+  renderBookDetail(book);
+  elements.bookDetailDialog.showModal();
+}
+
+function renderBookDetail(book) {
+  elements.bookDetailDialog.dataset.bookId = book.id;
+
+  elements.bookDetailCover.innerHTML = coverMarkup(book);
+  hydrateCoverThumbnailsStaggered(elements.bookDetailCover);
+
+  elements.bookDetailStatus.textContent = statusLabel(book.status);
+  elements.bookDetailStatus.setAttribute("style", pillStyle(book.status));
+
+  elements.bookDetailTitle.textContent = book.title || "Untitled";
+  elements.bookDetailAuthor.textContent = book.author || "Unknown author";
+
+  elements.bookDetailRating.innerHTML = book.rating
+    ? `<span aria-hidden="true">${starGlyphsOutOfFive(Number(book.rating))}</span><span class="rating-number">${book.rating} / 5</span>`
+    : `<span class="rating-number">Not rated</span>`;
+
+  elements.bookDetailMeta.innerHTML = `
+    <span>${book.year || "No year"}</span>
+    <span>${book.pages ? `${book.pages} pages` : "No page count"}</span>
+  `;
+
+  elements.bookDetailGenres.innerHTML = splitTagList(book.genres)
+    .map((genre) => `<span class="detail-tag">${escapeHtml(genre)}</span>`)
+    .join("");
+
+  elements.bookDetailTags.innerHTML = splitTagList(book.tags)
+    .map((tag) => `<span class="detail-tag is-personal">${escapeHtml(tag)}</span>`)
+    .join("");
+
+  elements.bookDetailDates.textContent = bookDetailDateSummary(book);
+  elements.bookDetailNotes.innerHTML = notesToEditableHtml(book.notes);
+}
+
+function splitTagList(value) {
+  return String(value || "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function bookDetailDateSummary(book) {
+  const started = book.startDate ? formatDisplayDate(book.startDate) : "";
+  const finished = book.finishDate ? formatDisplayDate(book.finishDate) : "";
+
+  if (started && finished) return `Started ${started} · Finished ${finished}`;
+  if (finished) return `Finished ${finished}`;
+  if (started) return `Started ${started}`;
+  return book.status === "want" ? "Not started yet" : "No dates logged";
+}
+
+function formatDisplayDate(dateKey) {
+  return new Date(`${dateKey}T00:00:00`).toLocaleDateString(undefined, {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+// Opens the existing editable form for a book (previously this was openBook()).
+// When opened from the detail page, pass returnTo: "detail" so closing, saving,
+// or canceling out of the form lands back on that book's detail page instead of
+// just closing outright.
+function openBookEdit(id, { returnTo = "" } = {}) {
   const book = books.find((item) => item.id === id);
   if (!book) return;
 
@@ -1202,6 +1573,8 @@ function openBook(id) {
   elements.deleteBook.hidden = false;
   elements.deleteConfirm.hidden = true;
   elements.lookupResults.innerHTML = "";
+  elements.dialog.dataset.returnTo = returnTo;
+  elements.dialog.dataset.returnBookId = returnTo ? book.id : "";
   elements.dialog.showModal();
 }
 
@@ -1256,7 +1629,7 @@ function renderLookupResults(results) {
     button.className = "lookup-result";
     const cover = result.cover_i ? `https://covers.openlibrary.org/b/id/${result.cover_i}-M.jpg` : "";
     button.innerHTML = `
-      ${cover ? `<img src="${cover}" alt="" />` : '<div class="mini-cover"></div>'}
+      ${cover ? `<img src="${cover}" alt="" loading="lazy" decoding="async" />` : '<div class="mini-cover"></div>'}
       <span>
         <strong>${escapeHtml(result.title || "Untitled")}</strong>
         <small>${escapeHtml(result.author_name?.slice(0, 2).join(", ") || "Unknown author")}</small>
@@ -1822,26 +2195,85 @@ function spineWidth(book) {
   return 38 + (hashString(book.id || book.title) % 38);
 }
 
+// A small set of muted, slightly dusty cloth-binding colors — closer to what real
+// hardcover bindings look like than saturated brand colors. Used as the spine's base
+// whenever there's no cover to sample, or blended toward when there is one (see
+// toClothColor below) so every spine, regardless of source, ends up feeling like
+// fabric or leather rather than a flat poster swatch.
 function fallbackSpineColor(book, index = 0) {
-  const colors = ["#61745f", "#8a9a73", "#9f8170", "#6f7f68", "#b19a6b", "#7b6f58"];
+  const colors = ["#5b6b56", "#75665a", "#5e6470", "#7a5e52", "#646154", "#516159", "#6b5a63", "#5a5648"];
   return colors[(hashString(book.cover || book.title || String(index)) + index) % colors.length];
 }
 
 function applyCoverColor(book, spine) {
   if (!book.cover) return;
 
-  const image = new Image();
-  image.crossOrigin = "anonymous";
-  image.onload = () => {
-    try {
-      const color = dominantImageColor(image);
-      spine.style.setProperty("--spine-color", color);
-      spine.style.setProperty("--spine-shade", shadeColor(color, -24));
-    } catch {
-      // Fallback colors stay in place when a cover cannot be sampled.
-    }
-  };
-  image.src = book.cover;
+  // Reuses the small cached thumbnail (shared with every other view) instead of
+  // issuing a second full-size network request just to sample a color. If the
+  // thumbnail isn't cached yet, this triggers the one-time downscale, and any other
+  // part of the app waiting on the same URL benefits from it too.
+  getCoverThumbnail(book.cover, (dataUrl) => {
+    const image = new Image();
+    image.onload = () => {
+      try {
+        const sampled = dominantImageColor(image);
+        const clothColor = toClothColor(sampled);
+        spine.style.setProperty("--spine-color", clothColor);
+        spine.style.setProperty("--spine-edge", shadeColor(clothColor, -32));
+        spine.style.setProperty("--spine-ink", spineInkColor(clothColor));
+      } catch {
+        // Fallback colors stay in place when a cover cannot be sampled.
+      }
+    };
+    image.src = dataUrl;
+  });
+}
+
+// Takes a vivid color sampled straight off a cover and mutes it toward something that
+// could plausibly be dyed cloth or leather: pulled most of the way toward a neutral
+// grey-brown and slightly darkened, so a bright orange cover doesn't turn into a
+// traffic-cone spine sitting next to muted neighbors.
+function toClothColor(sampledColor) {
+  const desaturated = mixColors(sampledColor, "#6b6358", 0.62);
+  return shadeColor(desaturated, -8);
+}
+
+function mixColors(colorA, colorB, weightB) {
+  const [r1, g1, b1] = colorToRgb(colorA);
+  const [r2, g2, b2] = colorToRgb(colorB);
+  const mix = (a, b) => Math.round(a * (1 - weightB) + b * weightB);
+  return `rgb(${mix(r1, r2)}, ${mix(g1, g2)}, ${mix(b1, b2)})`;
+}
+
+function colorToRgb(color) {
+  if (color.startsWith("#")) {
+    const hex = color.slice(1);
+    return [parseInt(hex.slice(0, 2), 16), parseInt(hex.slice(2, 4), 16), parseInt(hex.slice(4, 6), 16)];
+  }
+  const match = color.match(/\d+/g);
+  return match ? match.slice(0, 3).map(Number) : [90, 80, 70];
+}
+
+// Picks readable vertical-text ink (warm cream or soft charcoal) based on how light
+// or dark the spine's base color is, so text stays legible across the whole palette
+// without needing a per-color lookup table.
+function spineInkColor(baseColor) {
+  const [r, g, b] = colorToRgb(baseColor);
+  const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+  return brightness > 150 ? "#3a342c" : "#f2ecdf";
+}
+
+// A faint, single fixed grain pattern (not color-dependent) shared by every spine —
+// real cloth and paper texture is mostly about subtle irregularity, not a pattern
+// matched to each hue. Picking from two near-identical variants by index just keeps
+// immediate neighbors from looking like they were stamped from one texture tile.
+const SPINE_GRAIN_VARIANTS = [
+  `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='5' height='5'%3E%3Ccircle cx='1' cy='1' r='0.5' fill='%23000' fill-opacity='0.035'/%3E%3Ccircle cx='3.5' cy='3' r='0.4' fill='%23fff' fill-opacity='0.03'/%3E%3C/svg%3E")`,
+  `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='5' height='5'%3E%3Ccircle cx='3' cy='1.5' r='0.45' fill='%23000' fill-opacity='0.03'/%3E%3Ccircle cx='1' cy='3.5' r='0.4' fill='%23fff' fill-opacity='0.035'/%3E%3C/svg%3E")`,
+];
+
+function spineGrainImage(index) {
+  return SPINE_GRAIN_VARIANTS[index % SPINE_GRAIN_VARIANTS.length];
 }
 
 function dominantImageColor(image) {
@@ -2257,6 +2689,16 @@ elements.dayBooksDialog.addEventListener("click", (event) => {
   if (event.target === elements.dayBooksDialog) elements.dayBooksDialog.close();
 });
 
+$("#closeBookDetail").addEventListener("click", () => elements.bookDetailDialog.close());
+elements.bookDetailDialog.addEventListener("click", (event) => {
+  if (event.target === elements.bookDetailDialog) elements.bookDetailDialog.close();
+});
+elements.editBookFromDetail.addEventListener("click", () => {
+  const id = elements.bookDetailDialog.dataset.bookId;
+  elements.bookDetailDialog.close();
+  if (id) openBookEdit(id, { returnTo: "detail" });
+});
+
 $("#openAddBook").addEventListener("click", () => openAddBook());
 $("#closeDialog").addEventListener("click", () => elements.dialog.close());
 elements.dialog.addEventListener("click", (event) => {
@@ -2264,6 +2706,15 @@ elements.dialog.addEventListener("click", (event) => {
 });
 elements.dialog.addEventListener("close", () => {
   elements.deleteConfirm.hidden = true;
+
+  const returnTo = elements.dialog.dataset.returnTo;
+  const returnId = elements.dialog.dataset.returnBookId || $("#bookId").value;
+  elements.dialog.dataset.returnTo = "";
+  elements.dialog.dataset.returnBookId = "";
+
+  if (returnTo === "detail" && returnId && books.some((book) => book.id === returnId)) {
+    openBook(returnId);
+  }
 });
 $("#clearForm").addEventListener("click", () => {
   elements.bookForm.reset();

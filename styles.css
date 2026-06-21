@@ -489,38 +489,231 @@ textarea:focus {
 }
 
 .reading-spotlight {
-  padding: 22px;
-  margin-bottom: 26px;
-  background: linear-gradient(135deg, rgba(182, 201, 216, 0.28), rgba(255, 253, 250, 0.6));
-  border: 1px solid var(--blue);
-  border-radius: 10px;
-  box-shadow: 0 16px 36px rgba(91, 124, 153, 0.16);
+  position: relative;
+  padding: 26px 24px 16px;
+  margin-bottom: 28px;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 160% at 0% 0%, rgba(223, 183, 173, 0.18), transparent 55%),
+    radial-gradient(120% 160% at 100% 0%, rgba(182, 201, 216, 0.2), transparent 55%),
+    rgba(255, 253, 250, 0.7);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 18px 40px rgba(72, 61, 52, 0.08);
 }
 
 .spotlight-heading {
-  margin-bottom: 16px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
 }
 
-.spotlight-heading h3 {
+.spotlight-heading-text h3 {
   margin: 0;
   font-size: 1.2rem;
 }
 
-.spotlight-heading p {
+.spotlight-heading-text p {
   margin: 4px 0 0;
 }
 
+.spotlight-count {
+  flex: none;
+  padding: 6px 13px;
+  color: var(--sage-deep);
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  background: rgba(168, 188, 164, 0.22);
+  border: 1px solid var(--sage);
+  border-radius: 999px;
+}
+
+/* Currently-reading books sit on a horizontally scrolling "windowsill" — large
+   covers with a soft ambient glow sampled from the artwork itself, a status
+   ribbon, and a true day-count rather than a fabricated progress bar. */
+
 .spotlight-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px;
+  display: flex;
+  gap: 26px;
+  padding: 10px 4px 22px;
+  margin: 0 -4px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  scrollbar-color: var(--line) transparent;
+  scrollbar-width: thin;
+}
+
+.spotlight-grid::-webkit-scrollbar {
+  height: 7px;
+}
+
+.spotlight-grid::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 999px;
+}
+
+.spotlight-card {
+  position: relative;
+  flex: 0 0 168px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 18px 12px 0;
+  text-align: center;
+  cursor: pointer;
+  scroll-snap-align: start;
+}
+
+.spotlight-glow {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  width: 150px;
+  height: 150px;
+  background: radial-gradient(closest-side, rgba(var(--glow-color, 97, 116, 95), 0.5), transparent 72%);
+  filter: blur(8px);
+  transform: translateX(-50%);
+  transition: transform 220ms ease;
+  pointer-events: none;
+}
+
+.spotlight-cover-wrap {
+  position: relative;
+  z-index: 1;
+  transform: rotate(var(--tilt, 0deg));
+  transition: transform 200ms ease;
+}
+
+.spotlight-card:hover .spotlight-cover-wrap,
+.spotlight-card:focus-visible .spotlight-cover-wrap {
+  transform: rotate(0deg) translateY(-4px);
+}
+
+.spotlight-card:hover .spotlight-glow,
+.spotlight-card:focus-visible .spotlight-glow {
+  transform: translateX(-50%) scale(1.12);
+}
+
+.spotlight-card:focus-visible {
+  outline: none;
+}
+
+.spotlight-card:focus-visible .spotlight-cover {
+  box-shadow:
+    0 0 0 4px rgba(168, 188, 164, 0.45),
+    0 18px 30px rgba(72, 61, 52, 0.22);
+}
+
+.spotlight-ribbon {
+  position: absolute;
+  top: -10px;
+  right: 10px;
+  z-index: 2;
+  padding: 5px 10px 10px;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  clip-path: polygon(0 0, 100% 0, 100% 74%, 50% 100%, 0 74%);
+  transform: rotate(5deg);
+  box-shadow: 0 6px 12px rgba(72, 61, 52, 0.2);
+}
+
+.spotlight-cover {
+  width: 124px;
+  height: 184px;
+  margin: 0 auto;
+  overflow: hidden;
+  background: #f3eadf;
+  border: 3px solid #fffdfa;
+  border-radius: 6px;
+  box-shadow: 0 18px 30px rgba(72, 61, 52, 0.22);
+}
+
+.spotlight-cover img,
+.spotlight-cover .cover-placeholder {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.spotlight-info {
+  z-index: 1;
+  max-width: 168px;
+  margin-top: 14px;
+}
+
+.spotlight-info h4 {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 0 0 3px;
+  font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+  font-size: 1rem;
+  line-height: 1.25;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.spotlight-author {
+  overflow: hidden;
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spotlight-genre {
+  display: inline-block;
+  padding: 2px 9px;
+  margin-bottom: 9px;
+  color: var(--sage-deep);
+  font-size: 0.66rem;
+  font-weight: 750;
+  background: rgba(168, 188, 164, 0.18);
+  border: 1px solid var(--sage);
+  border-radius: 999px;
+}
+
+.spotlight-meta {
+  display: flex;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.spotlight-meta .spotlight-day {
+  color: var(--sage-deep);
+}
+
+.spotlight-meta span + span::before {
+  content: "·";
+  margin: 0 7px;
+  color: var(--line);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spotlight-cover-wrap,
+  .spotlight-glow,
+  .shelf-cover {
+    transition: none;
+  }
 }
 
 .library-divider {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin: 4px 0 18px;
+  padding-top: 8px;
+  margin: 6px 0 18px;
   color: var(--muted);
   font-size: 0.78rem;
   font-weight: 800;
@@ -550,41 +743,18 @@ textarea:focus {
   background: rgba(255, 253, 250, 0.88);
   border: 1px solid var(--line);
   border-radius: 8px;
-  box-shadow: 0 12px 30px rgba(72, 61, 52, 0.08);
+  box-shadow: 0 3px 8px rgba(72, 61, 52, 0.06);
+  transition: box-shadow 160ms ease, transform 160ms ease;
 }
 
-.book-card:hover,
-.compact-book:hover,
-.lookup-result:hover,
-.book-spine:hover {
-  transform: translateY(-1px);
+.book-card:hover {
+  box-shadow: 0 6px 14px rgba(72, 61, 52, 0.1);
 }
 
 .book-card.status-reading {
   background: linear-gradient(135deg, rgba(182, 201, 216, 0.22), rgba(255, 253, 250, 0.92));
   border-color: var(--blue);
   box-shadow: 0 14px 34px rgba(91, 124, 153, 0.22);
-}
-
-.book-card.book-card-featured {
-  grid-template-columns: 108px 1fr;
-  min-height: 184px;
-  padding: 16px;
-  background: rgba(255, 253, 250, 0.96);
-  border-width: 1px;
-  border-color: rgba(91, 124, 153, 0.45);
-  box-shadow: 0 18px 40px rgba(91, 124, 153, 0.26);
-}
-
-.book-card.book-card-featured .cover-wrap,
-.book-card.book-card-featured img,
-.book-card.book-card-featured .cover-placeholder {
-  width: 108px;
-  height: 162px;
-}
-
-.book-card.book-card-featured h4 {
-  font-size: 1.12rem;
 }
 
 .cover-wrap,
@@ -640,50 +810,189 @@ textarea:focus {
   font-size: 0.78rem;
 }
 
+/* Each status is a full-width row instead of a narrow column, so covers can
+   be shown larger and the page reads as a calm, organized list rather than a
+   busy board. A colored dot and a thin accent under each cover are the only
+   ties back to the status color — no skeuomorphic shelf or tag shapes. */
+
 .shelf-board {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(190px, 1fr));
+  display: flex;
+  flex-direction: column;
+}
+
+.shelf-row {
+  padding: 22px 2px;
+  border-bottom: 1px solid var(--line);
+}
+
+.shelf-row:first-child {
+  padding-top: 4px;
+}
+
+.shelf-row:last-child {
+  border-bottom: none;
+}
+
+.shelf-row-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
   gap: 14px;
-  align-items: start;
+  margin-bottom: 16px;
 }
 
-.shelf-column {
-  min-height: 220px;
-  padding: 12px;
-  background: rgba(255, 253, 250, 0.78);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-}
-
-.shelf-heading {
+.shelf-row-heading {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 10px;
+  min-width: 0;
+  gap: 10px;
 }
 
-.shelf-heading h4 {
+.shelf-row-dot {
+  flex: none;
+  width: 11px;
+  height: 11px;
+  background: var(--row-accent, var(--sage));
+  border-radius: 50%;
+}
+
+.shelf-row-heading h4 {
+  overflow: hidden;
   margin: 0;
+  font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+  font-size: 1.1rem;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
-.shelf-heading span {
-  display: grid;
-  place-items: center;
-  min-width: 28px;
-  height: 28px;
-  background: var(--rose-soft);
+.shelf-row-count {
+  flex: none;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.shelf-row-seeall {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  color: var(--sage-deep);
+  font-size: 0.82rem;
+  font-weight: 750;
+  background: none;
+  border: none;
+}
+
+.shelf-row-seeall:hover,
+.shelf-row-seeall:focus-visible {
+  text-decoration: underline;
+}
+
+.shelf-row-seeall span {
+  transition: transform 140ms ease;
+}
+
+.shelf-row-seeall:hover span {
+  transform: translateX(2px);
+}
+
+.shelf-row-empty {
+  margin: 0;
+  padding: 2px 0 4px;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.shelf-row-scroll {
+  display: flex;
+  gap: 20px;
+  padding: 2px 2px 12px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  scrollbar-color: var(--line) transparent;
+  scrollbar-width: thin;
+}
+
+.shelf-row-scroll::-webkit-scrollbar {
+  height: 7px;
+}
+
+.shelf-row-scroll::-webkit-scrollbar-thumb {
+  background: var(--line);
   border-radius: 999px;
 }
 
-.shelf-list {
-  display: grid;
-  gap: 8px;
+.shelf-cover-card {
+  flex: 0 0 116px;
+  cursor: pointer;
+  scroll-snap-align: start;
 }
 
-.shelf-see-more {
+.shelf-cover-card:focus-visible {
+  outline: none;
+}
+
+.shelf-cover {
+  width: 116px;
+  height: 174px;
+  overflow: hidden;
+  background: #f3eadf;
+  border-radius: 7px;
+  box-shadow: 0 10px 22px rgba(72, 61, 52, 0.14);
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.shelf-cover-card:hover .shelf-cover,
+.shelf-cover-card:focus-visible .shelf-cover {
+  transform: translateY(-4px);
+  box-shadow: 0 16px 28px rgba(72, 61, 52, 0.2);
+}
+
+.shelf-cover-card:focus-visible .shelf-cover {
+  box-shadow:
+    0 0 0 3px rgba(168, 188, 164, 0.5),
+    0 16px 28px rgba(72, 61, 52, 0.2);
+}
+
+.shelf-cover img,
+.shelf-cover .cover-placeholder {
+  display: block;
   width: 100%;
-  margin-top: 8px;
-  font-size: 0.85rem;
+  height: 100%;
+  object-fit: cover;
+}
+
+.shelf-cover-accent {
+  display: block;
+  width: 26px;
+  height: 3px;
+  margin-top: 10px;
+  background: var(--row-accent, var(--sage));
+  border-radius: 2px;
+}
+
+.shelf-cover-title {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 8px 0 2px;
+  font-size: 0.86rem;
+  font-weight: 700;
+  line-height: 1.3;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.shelf-cover-author {
+  overflow: hidden;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .compact-book {
@@ -745,9 +1054,9 @@ textarea:focus {
   display: flex;
   flex-wrap: nowrap;
   align-items: end;
-  gap: 7px;
+  gap: 6px;
   min-height: 340px;
-  padding-bottom: 18px;
+  padding: 6px 10px 18px;
   margin-bottom: 28px;
   position: relative;
 }
@@ -768,32 +1077,56 @@ textarea:focus {
 }
 
 .book-spine {
-  display: grid;
-  grid-template-rows: 3fr 1fr;
-  align-items: stretch;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
   width: var(--spine-width);
   height: var(--spine-height);
   min-height: 150px;
   max-height: 320px;
-  padding: 12px 7px;
-  color: #f8fbff;
+  padding: 16px 6px 14px;
+  color: var(--spine-ink, #f5f0e6);
   text-align: center;
-  background: linear-gradient(90deg, var(--spine-shade), var(--spine-color));
-  border: 1px solid rgba(48, 50, 58, 0.12);
-  border-radius: 5px 5px 3px 3px;
+  background-color: var(--spine-color);
+  background-image:
+    linear-gradient(
+      100deg,
+      rgba(255, 255, 255, 0.1) 0%,
+      transparent 22%,
+      transparent 78%,
+      rgba(0, 0, 0, 0.16) 100%
+    ),
+    var(--spine-grain);
+  border: 1px solid var(--spine-edge);
+  border-radius: 2px 2px 1px 1px;
   box-shadow:
-    inset 8px 0 14px rgba(255, 255, 255, 0.16),
-    inset -8px 0 14px rgba(48, 50, 58, 0.13),
-    0 12px 24px rgba(72, 61, 52, 0.16);
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset -1px 0 0 rgba(0, 0, 0, 0.08),
+    0 10px 20px rgba(72, 61, 52, 0.14);
+  transform: rotate(var(--spine-tilt, 0deg));
+  transform-origin: bottom center;
   transition:
     transform 160ms ease,
-    filter 160ms ease;
+    box-shadow 160ms ease;
   position: relative;
   z-index: 1;
 }
 
 .book-spine:hover {
-  filter: saturate(1.08);
+  transform: rotate(var(--spine-tilt, 0deg)) translateY(-3px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    inset -1px 0 0 rgba(0, 0, 0, 0.08),
+    0 16px 26px rgba(72, 61, 52, 0.2);
+}
+
+.spine-gilt {
+  width: 64%;
+  height: 1px;
+  margin-bottom: 12px;
+  background: var(--spine-gilt-color, transparent);
+  opacity: var(--spine-gilt-opacity, 0);
 }
 
 .spine-title,
@@ -803,20 +1136,23 @@ textarea:focus {
 }
 
 .spine-title {
-  justify-self: center;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: hidden;
-  font-size: 0.82rem;
-  font-weight: 850;
-  line-height: 1.1;
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.15;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
 .spine-author {
-  justify-self: center;
+  flex: none;
   overflow: hidden;
-  opacity: 0.86;
-  font-size: 0.62rem;
+  margin-top: 10px;
+  opacity: 0.72;
+  font-size: 0.6rem;
+  font-weight: 600;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -1765,10 +2101,6 @@ label {
   .nav-tab {
     text-align: center;
   }
-
-  .shelf-board {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 
 @media (max-width: 720px) {
@@ -1801,13 +2133,35 @@ label {
     font-size: 0.68rem;
   }
 
-  .shelf-board,
   .form-grid {
     grid-template-columns: 1fr;
   }
 
+  .shelf-cover-card {
+    flex-basis: 96px;
+  }
+
+  .shelf-cover {
+    width: 96px;
+    height: 144px;
+  }
+
   .lookup-row {
     grid-template-columns: 1fr;
+  }
+
+  .spotlight-card {
+    flex-basis: 144px;
+  }
+
+  .spotlight-cover {
+    width: 108px;
+    height: 160px;
+  }
+
+  .spotlight-glow {
+    width: 130px;
+    height: 130px;
   }
 }
 
@@ -1836,17 +2190,6 @@ label {
     height: 108px;
   }
 
-  .book-card.book-card-featured {
-    grid-template-columns: 72px 1fr;
-  }
-
-  .book-card.book-card-featured .cover-wrap,
-  .book-card.book-card-featured img,
-  .book-card.book-card-featured .cover-placeholder {
-    width: 72px;
-    height: 108px;
-  }
-
   .dialog-actions {
     align-items: stretch;
     flex-direction: column;
@@ -1863,5 +2206,108 @@ label {
 
   .rating-row-label {
     font-size: 0.7rem;
+  }
+}
+
+/* ---------- Book detail page (read-only Goodreads-style view) ---------- */
+
+.book-detail-card {
+  max-width: 720px;
+}
+
+.book-detail-top {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 22px;
+  margin-top: 6px;
+}
+
+.book-detail-cover img,
+.book-detail-cover .cover-placeholder {
+  width: 160px;
+  height: 240px;
+  border-radius: 8px;
+  box-shadow: 0 16px 34px rgba(72, 61, 52, 0.18);
+}
+
+.book-detail-heading h3 {
+  margin: 10px 0 2px;
+  font-size: 1.5rem;
+  line-height: 1.15;
+}
+
+.book-detail-author {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 1rem;
+}
+
+.book-detail-rating {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  color: var(--butter-deep, #c9a227);
+  font-size: 1.05rem;
+}
+
+.book-detail-rating .rating-number {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.book-detail-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.detail-tag {
+  padding: 3px 10px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--sage-deep);
+  background: rgba(168, 188, 164, 0.18);
+  border: 1px solid var(--sage);
+  border-radius: 999px;
+}
+
+.detail-tag.is-personal {
+  color: #6b5b8a;
+  background: rgba(200, 190, 217, 0.22);
+  border-color: var(--lavender);
+}
+
+.book-detail-dates {
+  margin: 4px 0 14px;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.book-detail-notes {
+  padding-top: 16px;
+  margin-top: 16px;
+  border-top: 1px solid var(--line);
+  line-height: 1.6;
+}
+
+.book-detail-notes:empty::before {
+  color: var(--muted);
+  content: "No notes yet.";
+}
+
+.book-detail-notes p,
+.book-detail-notes div {
+  margin: 0 0 10px;
+}
+
+@media (max-width: 560px) {
+  .book-detail-top {
+    grid-template-columns: 1fr;
+  }
+
+  .book-detail-cover {
+    justify-self: center;
   }
 }
