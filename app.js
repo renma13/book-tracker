@@ -173,6 +173,9 @@ const elements = {
   importCancelChoice: $("#importCancelChoice"),
   importProgress: $("#importProgress"),
   importProgressText: $("#importProgressText"),
+  libraryToolsDialog: $("#libraryToolsDialog"),
+  findMissingCovers: $("#findMissingCovers"),
+  toolsStatus: $("#toolsStatus"),
   syncDialog: $("#syncDialog"),
   syncConfigInput: $("#syncConfigInput"),
   syncCodeInput: $("#syncCodeInput"),
@@ -1856,6 +1859,89 @@ async function enrichBooksFromOpenLibrary(mappedBooks, onProgress) {
   return enriched;
 }
 
+// ---------- Find missing covers (title/author fallback search) ----------
+//
+// The ISBN lookup above only fires when a Goodreads row had an ISBN, and even then
+// it can miss if that specific edition isn't in Open Library's cover database. This
+// is a second-chance pass: for any book still missing a cover, search Open Library
+// by title + author (the same endpoint and approach as the manual "Search Open
+// Library" lookup in the Add Book dialog) and take the first match's cover, if any.
+// Books that still can't be matched are left alone — no placeholder covers are
+// invented.
+
+async function findCoverByTitleAuthor(book) {
+  const query = [book.title, book.author].filter(Boolean).join(" ");
+  if (!query.trim()) return null;
+
+  try {
+    const fields = "title,author_name,cover_i";
+    const response = await fetch(
+      `https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=1&fields=${fields}`
+    );
+    if (!response.ok) return null;
+    const data = await response.json();
+    const match = data.docs?.[0];
+    return match?.cover_i ? `https://covers.openlibrary.org/b/id/${match.cover_i}-L.jpg` : null;
+  } catch {
+    return null;
+  }
+}
+
+async function findMissingCovers({ onProgress } = {}) {
+  const missing = books.filter((book) => !book.cover && (book.title || "").trim());
+  if (!missing.length) return { checked: 0, found: 0 };
+
+  let found = 0;
+  for (let index = 0; index < missing.length; index += 1) {
+    const book = missing[index];
+    const cover = await findCoverByTitleAuthor(book);
+    if (cover) {
+      book.cover = cover;
+      found += 1;
+    }
+    onProgress?.(index + 1, missing.length);
+  }
+
+  if (found) {
+    saveBooks();
+    render();
+  }
+
+  return { checked: missing.length, found };
+}
+
+function setToolsStatus(message, { busy = false } = {}) {
+  if (!elements.toolsStatus) return;
+  elements.toolsStatus.hidden = !message;
+  elements.toolsStatus.textContent = message || "";
+  elements.toolsStatus.classList.toggle("is-busy", busy);
+}
+
+async function handleFindMissingCoversClick() {
+  const missingCount = books.filter((book) => !book.cover && (book.title || "").trim()).length;
+  if (!missingCount) {
+    setToolsStatus("Every book already has a cover.");
+    return;
+  }
+
+  elements.findMissingCovers.disabled = true;
+  setToolsStatus(`Searching Open Library… 0 of ${missingCount}`, { busy: true });
+
+  const { checked, found } = await findMissingCovers({
+    onProgress: (done, total) => setToolsStatus(`Searching Open Library… ${done} of ${total}`, { busy: true }),
+  });
+
+  elements.findMissingCovers.disabled = false;
+
+  if (!checked) {
+    setToolsStatus("Every book already has a cover.");
+  } else if (found) {
+    setToolsStatus(`Found ${found} of ${checked} missing ${checked === 1 ? "cover" : "covers"}.`);
+  } else {
+    setToolsStatus(`No matches found for the ${checked} book${checked === 1 ? "" : "s"} still missing a cover.`);
+  }
+}
+
 // ---------- Import mode prompt (merge / replace / cancel) ----------
 
 function promptImportMode(copy = {}) {
@@ -1924,6 +2010,21 @@ async function importGoodreadsCsv(file) {
 
   showImportProgress(0, mapped.length);
   const enriched = await enrichBooksFromOpenLibrary(mapped, (done, total) => showImportProgress(done, total));
+
+  const stillMissing = enriched.filter((book) => !book.cover);
+  if (stillMissing.length) {
+    elements.importProgressText.textContent = `Looking for ${stillMissing.length} more cover${
+      stillMissing.length === 1 ? "" : "s"
+    }…`;
+    let doneCount = 0;
+    for (const book of stillMissing) {
+      const cover = await findCoverByTitleAuthor(book);
+      if (cover) book.cover = cover;
+      doneCount += 1;
+      elements.importProgressText.textContent = `Looking for missing covers… ${doneCount} of ${stillMissing.length}`;
+    }
+  }
+
   hideImportProgress();
 
   const finalBooks = enriched.map(stripIsbn);
@@ -2741,8 +2842,17 @@ elements.goToToday.addEventListener("click", () => {
   calendarDate = new Date();
   render();
 });
+$("#openLibraryTools").addEventListener("click", () => {
+  setToolsStatus("");
+  elements.libraryToolsDialog.showModal();
+});
+$("#closeLibraryTools").addEventListener("click", () => elements.libraryToolsDialog.close());
+elements.libraryToolsDialog.addEventListener("click", (event) => {
+  if (event.target === elements.libraryToolsDialog) elements.libraryToolsDialog.close();
+});
 $("#exportData").addEventListener("click", exportData);
 $("#importData").addEventListener("change", importData);
+elements.findMissingCovers.addEventListener("click", handleFindMissingCoversClick);
 
 $("#openSync").addEventListener("click", openSyncDialog);
 $("#closeSyncDialog").addEventListener("click", () => elements.syncDialog.close());

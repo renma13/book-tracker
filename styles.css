@@ -164,16 +164,15 @@ button {
 
 .sidebar-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 42px;
   gap: 8px;
 }
 
-.sidebar-actions .primary-button {
+.sidebar-actions .sync-button {
   grid-column: 1 / -1;
 }
 
 .sync-button {
-  grid-column: 1 / -1;
   display: flex !important;
   flex-direction: row;
   flex-wrap: nowrap;
@@ -1586,6 +1585,64 @@ textarea:focus {
   .rating-row {
     grid-template-columns: 46px 1fr 30px;
   }
+}
+
+.tools-list {
+  display: grid;
+  gap: 10px;
+  margin: 18px 0;
+}
+
+.tool-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 16px;
+  background: #f8f0e8;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.tool-row-text {
+  display: grid;
+  gap: 3px;
+  min-width: 200px;
+}
+
+.tool-row-text strong {
+  font-size: 0.92rem;
+}
+
+.tool-row-text span {
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
+.tool-row .secondary-button,
+.tool-row .file-button {
+  flex: none;
+  padding: 0 18px;
+  white-space: nowrap;
+}
+
+.tools-status {
+  padding: 10px 14px;
+  margin: 0;
+  color: #3f5a39;
+  font-size: 0.85rem;
+  font-weight: 700;
+  background: rgba(168, 188, 164, 0.2);
+  border: 1px solid var(--sage);
+  border-radius: 8px;
+}
+
+.tools-status.is-busy {
+  color: #6b5b35;
+  background: #f6efe6;
+  border-color: var(--line);
 }
 
 dialog {

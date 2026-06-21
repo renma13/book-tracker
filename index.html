@@ -35,14 +35,13 @@
 
         <div class="sidebar-actions">
           <button class="primary-button" type="button" id="openAddBook">Add book</button>
-          <button class="ghost-button" type="button" id="exportData">Export</button>
-          <label class="ghost-button file-button" for="importData">Import</label>
-          <input id="importData" type="file" accept="application/json,.json,.csv,text/csv" />
+          <button class="icon-button" type="button" id="openLibraryTools" aria-label="Library tools">⚙</button>
           <button class="ghost-button sync-button" type="button" id="openSync">
             <span class="sync-dot" id="syncDot" aria-hidden="true"></span>
             <span id="syncButtonLabel">Sync devices</span>
           </button>
         </div>
+        <input id="importData" type="file" accept="application/json,.json,.csv,text/csv" />
       </aside>
 
       <main class="main-content">
@@ -411,6 +410,46 @@
         <p>Add a book manually or search Open Library to pre-fill the details.</p>
       </div>
     </template>
+
+    <dialog id="libraryToolsDialog">
+      <div class="dialog-card">
+        <div class="dialog-header">
+          <div>
+            <p class="eyebrow">Library tools</p>
+            <h2>Manage your library</h2>
+          </div>
+          <button class="icon-button" type="button" id="closeLibraryTools" aria-label="Close">×</button>
+        </div>
+
+        <div class="tools-list">
+          <div class="tool-row">
+            <div class="tool-row-text">
+              <strong>Export your library</strong>
+              <span>Download every book as a JSON backup file.</span>
+            </div>
+            <button class="secondary-button" type="button" id="exportData">Export</button>
+          </div>
+
+          <div class="tool-row">
+            <div class="tool-row-text">
+              <strong>Import books</strong>
+              <span>Restore a Chapter Garden JSON backup, or bring in a Goodreads CSV export.</span>
+            </div>
+            <label class="secondary-button file-button" for="importData">Import</label>
+          </div>
+
+          <div class="tool-row">
+            <div class="tool-row-text">
+              <strong>Find missing covers</strong>
+              <span>Search Open Library by title and author for any book that's still missing a cover image.</span>
+            </div>
+            <button class="secondary-button" type="button" id="findMissingCovers">Find covers</button>
+          </div>
+        </div>
+
+        <p class="tools-status" id="toolsStatus" hidden></p>
+      </div>
+    </dialog>
 
     <dialog id="syncDialog">
       <div class="dialog-card">
