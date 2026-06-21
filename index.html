@@ -35,10 +35,9 @@
 
         <div class="sidebar-actions">
           <button class="primary-button" type="button" id="openAddBook">Add book</button>
-          <button class="icon-button" type="button" id="openLibraryTools" aria-label="Library tools">⚙</button>
-          <button class="ghost-button sync-button" type="button" id="openSync">
+          <button class="ghost-button settings-trigger" type="button" id="openLibraryTools">
             <span class="sync-dot" id="syncDot" aria-hidden="true"></span>
-            <span id="syncButtonLabel">Sync devices</span>
+            <span>Settings</span>
           </button>
         </div>
         <input id="importData" type="file" accept="application/json,.json,.csv,text/csv" />
@@ -415,7 +414,7 @@
       <div class="dialog-card">
         <div class="dialog-header">
           <div>
-            <p class="eyebrow">Library tools</p>
+            <p class="eyebrow">Settings</p>
             <h2>Manage your library</h2>
           </div>
           <button class="icon-button" type="button" id="closeLibraryTools" aria-label="Close">×</button>
@@ -444,6 +443,14 @@
               <span>Search Open Library by title and author for any book that's still missing a cover image.</span>
             </div>
             <button class="secondary-button" type="button" id="findMissingCovers">Find covers</button>
+          </div>
+
+          <div class="tool-row">
+            <div class="tool-row-text">
+              <strong>Sync devices</strong>
+              <span id="syncButtonLabel">Not connected — books are saved only on this device.</span>
+            </div>
+            <button class="secondary-button" type="button" id="openSync">Sync devices</button>
           </div>
         </div>
 

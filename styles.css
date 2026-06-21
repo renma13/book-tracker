@@ -164,23 +164,17 @@ button {
 
 .sidebar-actions {
   display: grid;
-  grid-template-columns: 1fr 42px;
+  grid-template-columns: 1fr;
   gap: 8px;
 }
 
-.sidebar-actions .sync-button {
-  grid-column: 1 / -1;
-}
-
-.sync-button {
+.settings-trigger {
   display: flex !important;
   flex-direction: row;
   flex-wrap: nowrap;
   align-items: center;
   justify-content: center;
   gap: 9px;
-  padding-top: 12px;
-  padding-bottom: 12px;
 }
 
 .sync-dot {

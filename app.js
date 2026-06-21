@@ -1924,14 +1924,14 @@ async function handleFindMissingCoversClick() {
     return;
   }
 
-  elements.findMissingCovers.disabled = true;
+  if (elements.findMissingCovers) elements.findMissingCovers.disabled = true;
   setToolsStatus(`Searching Open Library… 0 of ${missingCount}`, { busy: true });
 
   const { checked, found } = await findMissingCovers({
     onProgress: (done, total) => setToolsStatus(`Searching Open Library… ${done} of ${total}`, { busy: true }),
   });
 
-  elements.findMissingCovers.disabled = false;
+  if (elements.findMissingCovers) elements.findMissingCovers.disabled = false;
 
   if (!checked) {
     setToolsStatus("Every book already has a cover.");
@@ -2013,16 +2013,14 @@ async function importGoodreadsCsv(file) {
 
   const stillMissing = enriched.filter((book) => !book.cover);
   if (stillMissing.length) {
-    elements.importProgressText.textContent = `Looking for ${stillMissing.length} more cover${
-      stillMissing.length === 1 ? "" : "s"
-    }…`;
     let doneCount = 0;
     for (const book of stillMissing) {
+      elements.importProgressText.textContent = `Looking for missing covers… ${doneCount} of ${stillMissing.length}`;
       const cover = await findCoverByTitleAuthor(book);
       if (cover) book.cover = cover;
       doneCount += 1;
-      elements.importProgressText.textContent = `Looking for missing covers… ${doneCount} of ${stillMissing.length}`;
     }
+    elements.importProgressText.textContent = `Looking for missing covers… ${doneCount} of ${stillMissing.length}`;
   }
 
   hideImportProgress();
@@ -2125,7 +2123,7 @@ function setSyncStatus(state, message = "") {
   }
 
   if (elements.syncButtonLabel) {
-    elements.syncButtonLabel.textContent = state === "synced" ? "Synced" : "Sync devices";
+    elements.syncButtonLabel.textContent = messages[state] || messages.idle;
   }
 
   if (elements.disconnectSync) {
@@ -2766,46 +2764,76 @@ function finishRemoveStatus(id) {
 }
 
 elements.navTabs.forEach((tab) => tab.addEventListener("click", () => setView(tab.dataset.view)));
-elements.globalSearch.addEventListener("input", render);
-elements.statusFilter.addEventListener("change", render);
-elements.statsYearFilter.addEventListener("change", () => {
+elements.globalSearch?.addEventListener("input", render);
+elements.statusFilter?.addEventListener("change", render);
+elements.statsYearFilter?.addEventListener("change", () => {
   statsYear = elements.statsYearFilter.value;
   renderStats();
 });
 
-$("#manageStatuses").addEventListener("click", openManageStatuses);
-$("#closeManageStatuses").addEventListener("click", () => elements.manageStatusesDialog.close());
-elements.manageStatusesDialog.addEventListener("click", (event) => {
+// Settings dialog (Export / Import / Find missing covers / Sync) is wired up first and
+// independently of every other dialog below, so a missing/renamed id anywhere else in
+// this file can never prevent the Settings button itself from working.
+if (elements.libraryToolsDialog) {
+  $("#openLibraryTools")?.addEventListener("click", () => {
+    setToolsStatus("");
+    elements.libraryToolsDialog.showModal();
+  });
+  $("#closeLibraryTools")?.addEventListener("click", () => elements.libraryToolsDialog.close());
+  elements.libraryToolsDialog.addEventListener("click", (event) => {
+    if (event.target === elements.libraryToolsDialog) elements.libraryToolsDialog.close();
+  });
+}
+$("#exportData")?.addEventListener("click", exportData);
+$("#importData")?.addEventListener("change", importData);
+elements.findMissingCovers?.addEventListener("click", handleFindMissingCoversClick);
+$("#openSync")?.addEventListener("click", () => {
+  elements.libraryToolsDialog?.close();
+  openSyncDialog();
+});
+$("#closeSyncDialog")?.addEventListener("click", () => elements.syncDialog?.close());
+elements.syncDialog?.addEventListener("click", (event) => {
+  if (event.target === elements.syncDialog) elements.syncDialog.close();
+});
+$("#generateSyncCode")?.addEventListener("click", () => {
+  elements.syncCodeInput.value = generateSyncCode();
+});
+$("#connectSync")?.addEventListener("click", handleConnectSyncClick);
+elements.disconnectSync?.addEventListener("click", handleDisconnectSyncClick);
+
+$("#manageStatuses")?.addEventListener("click", openManageStatuses);
+$("#closeManageStatuses")?.addEventListener("click", () => elements.manageStatusesDialog.close());
+elements.manageStatusesDialog?.addEventListener("click", (event) => {
   if (event.target === elements.manageStatusesDialog) elements.manageStatusesDialog.close();
 });
-elements.newStatusForm.addEventListener("submit", (event) => {
+elements.newStatusForm?.addEventListener("submit", (event) => {
   event.preventDefault();
   addStatus(elements.newStatusName.value, elements.newStatusColor.value);
   elements.newStatusForm.reset();
   elements.newStatusColor.value = "#b6c9d8";
 });
 
-$("#closeDayBooks").addEventListener("click", () => elements.dayBooksDialog.close());
-elements.dayBooksDialog.addEventListener("click", (event) => {
+$("#closeDayBooks")?.addEventListener("click", () => elements.dayBooksDialog.close());
+elements.dayBooksDialog?.addEventListener("click", (event) => {
   if (event.target === elements.dayBooksDialog) elements.dayBooksDialog.close();
 });
 
-$("#closeBookDetail").addEventListener("click", () => elements.bookDetailDialog.close());
-elements.bookDetailDialog.addEventListener("click", (event) => {
+$("#closeBookDetail")?.addEventListener("click", () => elements.bookDetailDialog.close());
+elements.bookDetailDialog?.addEventListener("click", (event) => {
   if (event.target === elements.bookDetailDialog) elements.bookDetailDialog.close();
 });
-elements.editBookFromDetail.addEventListener("click", () => {
+elements.editBookFromDetail?.addEventListener("click", () => {
   const id = elements.bookDetailDialog.dataset.bookId;
   elements.bookDetailDialog.close();
   if (id) openBookEdit(id, { returnTo: "detail" });
 });
 
-$("#openAddBook").addEventListener("click", () => openAddBook());
-$("#closeDialog").addEventListener("click", () => elements.dialog.close());
-elements.dialog.addEventListener("click", (event) => {
+$("#openAddBook")?.addEventListener("click", () => openAddBook());
+$("#closeDialog")?.addEventListener("click", () => elements.dialog.close());
+elements.dialog?.addEventListener("click", (event) => {
   if (event.target === elements.dialog) elements.dialog.close();
 });
-elements.dialog.addEventListener("close", () => {
+elements.dialog?.addEventListener("close", () => {
   elements.deleteConfirm.hidden = true;
 
   const returnTo = elements.dialog.dataset.returnTo;
@@ -2817,55 +2845,33 @@ elements.dialog.addEventListener("close", () => {
     openBook(returnId);
   }
 });
-$("#clearForm").addEventListener("click", () => {
+$("#clearForm")?.addEventListener("click", () => {
   elements.bookForm.reset();
   $("#bookId").value = "";
   $("#notes").innerHTML = "";
   setStarRatingFromValue("");
 });
-$("#lookupButton").addEventListener("click", searchBooks);
-$("#bookLookup").addEventListener("keydown", (event) => {
+$("#lookupButton")?.addEventListener("click", searchBooks);
+$("#bookLookup")?.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     event.preventDefault();
     searchBooks();
   }
 });
-$("#prevMonth").addEventListener("click", () => {
+$("#prevMonth")?.addEventListener("click", () => {
   calendarDate = new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1);
   render();
 });
-$("#nextMonth").addEventListener("click", () => {
+$("#nextMonth")?.addEventListener("click", () => {
   calendarDate = new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1);
   render();
 });
-elements.goToToday.addEventListener("click", () => {
+elements.goToToday?.addEventListener("click", () => {
   calendarDate = new Date();
   render();
 });
-$("#openLibraryTools").addEventListener("click", () => {
-  setToolsStatus("");
-  elements.libraryToolsDialog.showModal();
-});
-$("#closeLibraryTools").addEventListener("click", () => elements.libraryToolsDialog.close());
-elements.libraryToolsDialog.addEventListener("click", (event) => {
-  if (event.target === elements.libraryToolsDialog) elements.libraryToolsDialog.close();
-});
-$("#exportData").addEventListener("click", exportData);
-$("#importData").addEventListener("change", importData);
-elements.findMissingCovers.addEventListener("click", handleFindMissingCoversClick);
 
-$("#openSync").addEventListener("click", openSyncDialog);
-$("#closeSyncDialog").addEventListener("click", () => elements.syncDialog.close());
-elements.syncDialog.addEventListener("click", (event) => {
-  if (event.target === elements.syncDialog) elements.syncDialog.close();
-});
-$("#generateSyncCode").addEventListener("click", () => {
-  elements.syncCodeInput.value = generateSyncCode();
-});
-$("#connectSync").addEventListener("click", handleConnectSyncClick);
-elements.disconnectSync.addEventListener("click", handleDisconnectSyncClick);
-
-elements.bookForm.addEventListener("submit", (event) => {
+elements.bookForm?.addEventListener("submit", (event) => {
   event.preventDefault();
   const book = collectFormBook();
   const existingIndex = books.findIndex((item) => item.id === book.id);
@@ -2878,17 +2884,17 @@ elements.bookForm.addEventListener("submit", (event) => {
   elements.dialog.close();
 });
 
-elements.deleteBook.addEventListener("click", () => {
+elements.deleteBook?.addEventListener("click", () => {
   const id = $("#bookId").value;
   if (!id) return;
   elements.deleteConfirm.hidden = false;
 });
 
-elements.cancelDelete.addEventListener("click", () => {
+elements.cancelDelete?.addEventListener("click", () => {
   elements.deleteConfirm.hidden = true;
 });
 
-elements.confirmDelete.addEventListener("click", () => {
+elements.confirmDelete?.addEventListener("click", () => {
   const id = $("#bookId").value;
   if (!id) return;
   books = books.filter((book) => book.id !== id);
