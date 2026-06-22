@@ -119,6 +119,7 @@ let books = loadBooks();
 let currentView = "calendar";
 let calendarDate = new Date();
 let statsYear = String(new Date().getFullYear());
+let libraryPage = 1;
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -129,6 +130,11 @@ const elements = {
   globalSearch: $("#globalSearch"),
   statusFilter: $("#statusFilter"),
   bookGrid: $("#bookGrid"),
+  libraryPagination: $("#libraryPagination"),
+  paginationPages: $("#paginationPages"),
+  paginationPrev: $("#paginationPrev"),
+  paginationNext: $("#paginationNext"),
+  paginationJumpInput: $("#paginationJumpInput"),
   readingSpotlight: $("#readingSpotlight"),
   spotlightGrid: $("#spotlightGrid"),
   spotlightCount: $("#spotlightCount"),
@@ -141,7 +147,10 @@ const elements = {
   rhythmSub: $("#rhythmSub"),
   genreDonutWrap: $("#genreDonutWrap"),
   ratingBars: $("#ratingBars"),
+  streaksSummary: $("#streaksSummary"),
+  streaksGrid: $("#streaksGrid"),
   paceChart: $("#paceChart"),
+  paceSub: $("#paceSub"),
   insightsList: $("#insightsList"),
   calendarGrid: $("#calendarGrid"),
   calendarMonth: $("#calendarMonth"),
@@ -510,6 +519,8 @@ function openDayBooks(dateKey, entries) {
   elements.dayBooksDialog.showModal();
 }
 
+const LIBRARY_PAGE_SIZE = 12;
+
 function renderLibrary() {
   const statusValue = elements.statusFilter.value;
   const searchedBooks = filteredBooks();
@@ -520,10 +531,8 @@ function renderLibrary() {
   elements.readingSpotlight.hidden = !showSpotlight;
   elements.spotlightGrid.innerHTML = "";
   if (showSpotlight) {
-    readingBooks.forEach((book) => elements.spotlightGrid.append(spotlightCard(book)));
-  }
-  if (elements.spotlightCount) {
-    elements.spotlightCount.textContent = `${readingBooks.length} ${readingBooks.length === 1 ? "book" : "books"}`;
+    readingBooks.forEach((book) => elements.spotlightGrid.append(readingCard(book)));
+    hydrateCoverThumbnailsStaggered(elements.spotlightGrid);
   }
 
   const restOfLibrary = searchedBooks.filter((book) => {
@@ -532,6 +541,15 @@ function renderLibrary() {
   });
 
   elements.libraryDivider.hidden = !showSpotlight;
+  const dividerLabel = document.getElementById("libraryDividerLabel");
+  if (dividerLabel) {
+    if (statusValue !== "all" && statusValue !== "reading") {
+      dividerLabel.textContent = statusLabel(statusValue);
+    } else {
+      dividerLabel.textContent = "Rest of library";
+    }
+  }
+
   elements.bookGrid.innerHTML = "";
 
   if (!restOfLibrary.length) {
@@ -542,10 +560,92 @@ function renderLibrary() {
           : undefined
       )
     );
+    renderPagination(0, 1);
     return;
   }
 
-  restOfLibrary.forEach((book) => elements.bookGrid.append(bookCard(book)));
+  const pageCount = Math.max(1, Math.ceil(restOfLibrary.length / LIBRARY_PAGE_SIZE));
+  // Clamp in case the previous page no longer exists (e.g. a filter/search just
+  // shrank the result set, or a book was deleted off the last page).
+  if (libraryPage > pageCount) libraryPage = pageCount;
+  if (libraryPage < 1) libraryPage = 1;
+
+  const startIndex = (libraryPage - 1) * LIBRARY_PAGE_SIZE;
+  const pageBooks = restOfLibrary.slice(startIndex, startIndex + LIBRARY_PAGE_SIZE);
+
+  pageBooks.forEach((book) => elements.bookGrid.append(bookRow(book)));
+  hydrateCoverThumbnailsStaggered(elements.bookGrid);
+
+  renderPagination(restOfLibrary.length, pageCount);
+}
+
+// ---------- Library pagination ----------
+//
+// A page-number strip (‹ 1 2 3 › plus a "jump to page" number input) replaces what
+// used to be an unbounded list. Always shows page 1, the last page, and a small
+// window around the current page, collapsing the gaps with an ellipsis — so the
+// strip stays a fixed, scannable width even with hundreds of pages.
+
+function renderPagination(totalBooks, pageCount) {
+  if (!elements.libraryPagination) return;
+
+  if (!totalBooks || pageCount <= 1) {
+    elements.libraryPagination.hidden = true;
+    return;
+  }
+
+  elements.libraryPagination.hidden = false;
+
+  elements.paginationPrev.disabled = libraryPage <= 1;
+  elements.paginationNext.disabled = libraryPage >= pageCount;
+
+  elements.paginationJumpInput.max = String(pageCount);
+  elements.paginationJumpInput.placeholder = `/ ${pageCount}`;
+  if (document.activeElement !== elements.paginationJumpInput) {
+    elements.paginationJumpInput.value = "";
+  }
+
+  elements.paginationPages.innerHTML = "";
+
+  paginationPageList(libraryPage, pageCount).forEach((entry) => {
+    if (entry === "ellipsis") {
+      const span = document.createElement("span");
+      span.className = "pagination-ellipsis";
+      span.textContent = "…";
+      span.setAttribute("aria-hidden", "true");
+      elements.paginationPages.append(span);
+      return;
+    }
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `pagination-page${entry === libraryPage ? " active" : ""}`;
+    button.textContent = String(entry);
+    button.setAttribute("aria-label", `Page ${entry}`);
+    if (entry === libraryPage) button.setAttribute("aria-current", "page");
+    button.addEventListener("click", () => goToLibraryPage(entry));
+    elements.paginationPages.append(button);
+  });
+}
+
+// Builds the list of page numbers/ellipses to display: page 1, the last page, the
+// current page, and one neighbor on each side of the current page, always.
+function paginationPageList(current, pageCount) {
+  const pagesToShow = new Set([1, pageCount, current, current - 1, current + 1]);
+  const sorted = [...pagesToShow].filter((page) => page >= 1 && page <= pageCount).sort((a, b) => a - b);
+
+  const result = [];
+  sorted.forEach((page, index) => {
+    if (index > 0 && page - sorted[index - 1] > 1) result.push("ellipsis");
+    result.push(page);
+  });
+  return result;
+}
+
+function goToLibraryPage(page) {
+  libraryPage = page;
+  renderLibrary();
+  elements.bookGrid.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 const SHELF_PREVIEW_LIMIT = 10;
@@ -630,6 +730,7 @@ function shelfCoverCard(book) {
 function openShelfInLibrary(statusId) {
   elements.globalSearch.value = "";
   elements.statusFilter.value = statusId;
+  libraryPage = 1;
   setView("library");
   render();
 }
@@ -781,7 +882,8 @@ function renderStats() {
   renderRhythmChart(finishedWithDates, { isAllTime, year });
   renderGenreDonut(genreCounts);
   renderRatingBars(rated);
-  renderPaceChart(finishedWithDates);
+  renderReadingStreaks({ isAllTime, year });
+  renderPaceOverTime(finishedWithDates, { isAllTime, year });
   renderInsights({ finished, finishedWithDates, pages, averageRating, genreCounts, rated, isAllTime, year, scopedBooks, rereadFinishes });
 }
 
@@ -907,6 +1009,7 @@ function renderRhythmChart(finishedWithDates, { isAllTime, year }) {
 function openMonthInLibrary(monthIndex, year) {
   elements.globalSearch.value = "";
   elements.statusFilter.value = "finished";
+  libraryPage = 1;
   setView("library");
   render();
   // The library view doesn't have its own month filter, so the search box is the
@@ -1010,6 +1113,7 @@ function renderGenreDonut(genreCounts) {
 function openGenreInLibrary(genre) {
   elements.globalSearch.value = genre;
   elements.statusFilter.value = "all";
+  libraryPage = 1;
   setView("library");
   render();
 }
@@ -1059,124 +1163,455 @@ function starGlyphsOutOfFive(value) {
 
 // ---------- Pace: days spent reading vs. page count, as a scatter ----------
 
-function renderPaceChart(finishedEvents) {
-  const container = elements.paceChart;
-  container.innerHTML = "";
+// ---------- Reading streaks: weekly heatmap + current/longest/active counts ----------
+//
+// A "streak week" is any ISO week (Monday–Sunday) containing at least one finish event
+// (primary read or re-read), across the whole library — streaks are a continuity idea,
+// so they intentionally ignore the Stats year filter rather than getting cut off at a
+// year boundary. weekKey() always returns the Monday date (as YYYY-MM-DD) for whatever
+// date is passed in, so any date within a week maps to the same key.
 
-  const timed = finishedEvents
-    .filter((readEvent) => readEvent.startDate && readEvent.finishDate && readEvent.startDate <= readEvent.finishDate)
-    .map((readEvent) => ({
-      readEvent,
-      days: Math.max(1, daysBetween(readEvent.startDate, readEvent.finishDate)),
-      pages: Number(readEvent.pages || 0),
-    }))
-    .filter((entry) => entry.pages > 0);
+function startOfIsoWeek(date) {
+  const result = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const day = result.getDay(); // 0 = Sunday … 6 = Saturday
+  const mondayOffset = day === 0 ? -6 : 1 - day;
+  result.setDate(result.getDate() + mondayOffset);
+  return result;
+}
 
-  if (timed.length < 2) {
-    container.innerHTML = '<p class="pace-empty">Log a start and finish date on a couple more books to see your pace here.</p>';
+function weekKey(date) {
+  return toDateInput(startOfIsoWeek(date));
+}
+
+function weeksFinishedMap() {
+  const counts = new Map();
+  allReadEvents().forEach((event) => {
+    if (!event.finishDate) return;
+    const key = weekKey(new Date(`${event.finishDate}T00:00:00`));
+    counts.set(key, (counts.get(key) || 0) + 1);
+  });
+  return counts;
+}
+
+function computeReadingStreaks() {
+  const counts = weeksFinishedMap();
+  const { currentStreak, longestStreak } = computeStreakStats(counts);
+  const currentYear = new Date().getFullYear();
+  const activeThisYear = [...counts.keys()].filter(
+    (key) => new Date(`${key}T00:00:00`).getFullYear() === currentYear
+  ).length;
+  return { counts, currentStreak, longestStreak, activeThisYear };
+}
+
+const STREAKS_DAY_LABELS = ["Mon", "", "Wed", "", "Fri", "", ""];
+
+function renderReadingStreaks({ isAllTime = true, year = 0 } = {}) {
+  if (!elements.streaksSummary || !elements.streaksGrid) return;
+
+  // Build a week→count map scoped to the selected filter.
+  // For a specific year, only count finishes in that year.
+  // For all-time, count everything.
+  const allCounts = weeksFinishedMap();
+  const scopedCounts = new Map();
+  allCounts.forEach((count, key) => {
+    if (isAllTime) {
+      scopedCounts.set(key, count);
+    } else {
+      // Re-count only the events that fall in the selected year
+      const yearCount = allReadEvents().filter((event) => {
+        if (!event.finishDate) return false;
+        if (Number(event.finishDate.slice(0, 4)) !== year) return false;
+        return weekKey(new Date(`${event.finishDate}T00:00:00`)) === key;
+      }).length;
+      if (yearCount > 0) scopedCounts.set(key, yearCount);
+    }
+  });
+
+  // Summary stats scoped to the filter
+  const allKeys = [...scopedCounts.keys()].sort();
+  const scopedYear = isAllTime ? new Date().getFullYear() : year;
+
+  // Current streak — always computed from the full all-time map (streaks span years)
+  // but the "active this period" count uses the scoped map.
+  const { currentStreak, longestStreak } = computeStreakStats(allCounts);
+  const activePeriod = allKeys.filter((key) => {
+    const keyYear = new Date(`${key}T00:00:00`).getFullYear();
+    return isAllTime ? true : keyYear === year;
+  }).length;
+
+  const periodLabel = isAllTime ? "all time" : String(year);
+  const activeLabel = isAllTime ? "active (all time)" : `active in ${year}`;
+
+  elements.streaksSummary.innerHTML = `
+    <div class="streak-stat">
+      <strong>${currentStreak}</strong>
+      <span>${currentStreak === 1 ? "week" : "weeks"}</span>
+      <small>current streak</small>
+    </div>
+    <div class="streak-stat">
+      <strong>${longestStreak}</strong>
+      <span>${longestStreak === 1 ? "week" : "weeks"}</span>
+      <small>longest streak</small>
+    </div>
+    <div class="streak-stat">
+      <strong>${activePeriod}</strong>
+      <span>${activePeriod === 1 ? "week" : "weeks"}</span>
+      <small>${activeLabel}</small>
+    </div>
+  `;
+
+  elements.streaksGrid.innerHTML = "";
+
+  if (!scopedCounts.size) {
+    elements.streaksGrid.innerHTML = '<p class="streaks-empty">No finished books in this period yet.</p>';
     return;
   }
 
-  // The viewBox matches the rendered box's real aspect ratio (instead of a plain
-  // 100x100 square stretched with preserveAspectRatio="none"), so dots stay round
-  // instead of being squashed into ellipses. Padding is reserved on the left and
-  // bottom for axis labels.
-  const viewWidth = 320;
-  const viewHeight = 160;
-  const padLeft = 34;
-  const padBottom = 20;
-  const padTop = 10;
-  const padRight = 10;
+  const todayWeekStart = startOfIsoWeek(new Date());
+  const todayKey = weekKey(todayWeekStart);
+  const maxCount = Math.max(...scopedCounts.values(), 1);
+
+  // Determine the window of weeks to show.
+  // For a specific year: Jan 1 of that year through Dec 31 (or today if it's the current year).
+  // For all-time: earliest finish week through today.
+  let windowStart;
+  let windowEnd;
+  if (isAllTime) {
+    const earliestKey = allKeys[0];
+    windowStart = startOfIsoWeek(new Date(`${earliestKey}T00:00:00`));
+    windowEnd = new Date(todayWeekStart);
+  } else {
+    windowStart = startOfIsoWeek(new Date(year, 0, 1));
+    const yearEnd = new Date(year, 11, 31);
+    windowEnd = startOfIsoWeek(year === new Date().getFullYear() ? new Date() : yearEnd);
+  }
+
+  // Build the ordered list of weeks in the window
+  const weeks = [];
+  const cursor = new Date(windowStart);
+  while (cursor <= windowEnd) {
+    const key = weekKey(cursor);
+    weeks.push({ key, count: scopedCounts.get(key) || 0, weekStart: new Date(cursor) });
+    cursor.setDate(cursor.getDate() + 7);
+  }
+
+  // Month label row — show year alongside month when all-time (multiple years visible)
+  const monthRow = document.createElement("div");
+  monthRow.className = "streaks-month-row";
+  const monthSpacer = document.createElement("span");
+  monthSpacer.className = "streaks-day-spacer";
+  monthRow.append(monthSpacer);
+  let lastMonthKey = "";
+  weeks.forEach((week) => {
+    const m = week.weekStart.getMonth();
+    const y = week.weekStart.getFullYear();
+    const monthKey = `${y}-${m}`;
+    const cell = document.createElement("span");
+    cell.className = "streaks-month-label-cell";
+    if (monthKey !== lastMonthKey) {
+      // For all-time view, show "Jan '23" style; for single year just "Jan"
+      cell.textContent = isAllTime
+        ? week.weekStart.toLocaleDateString(undefined, { month: "short", year: "2-digit" })
+        : week.weekStart.toLocaleDateString(undefined, { month: "short" });
+      lastMonthKey = monthKey;
+    }
+    monthRow.append(cell);
+  });
+  elements.streaksGrid.append(monthRow);
+
+  // Body: day-label column + one column per week
+  const bodyRow = document.createElement("div");
+  bodyRow.className = "streaks-body-row";
+
+  const dayCol = document.createElement("div");
+  dayCol.className = "streaks-day-col";
+  STREAKS_DAY_LABELS.forEach((label) => {
+    const span = document.createElement("span");
+    span.className = "streaks-day-label";
+    span.textContent = label;
+    dayCol.append(span);
+  });
+  bodyRow.append(dayCol);
+
+  weeks.forEach(({ key, count, weekStart }) => {
+    const isThisWeek = key === todayKey;
+    const col = document.createElement("div");
+    col.className = `streaks-week-col${isThisWeek ? " is-current-week" : ""}`;
+    const level = streakLevel(count, maxCount);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 6);
+    const rangeLabel = `${formatDisplayDate(toDateInput(weekStart))} – ${formatDisplayDate(toDateInput(weekEnd))}`;
+    const tipText = count
+      ? `${count} ${count === 1 ? "book" : "books"} finished — week of ${rangeLabel}`
+      : `No finishes — week of ${rangeLabel}`;
+
+    for (let day = 0; day < 7; day += 1) {
+      const cell = document.createElement("span");
+      cell.className = `streaks-cell streaks-level-${level}`;
+      cell.title = tipText;
+      col.append(cell);
+    }
+    bodyRow.append(col);
+  });
+
+  elements.streaksGrid.append(bodyRow);
+}
+
+// Extracted from computeReadingStreaks so it can be called with any counts map.
+// Returns current and longest streaks based on the provided full all-time map.
+function computeStreakStats(counts) {
+  const todayWeekStart = startOfIsoWeek(new Date());
+
+  let currentStreak = 0;
+  let cursor = new Date(todayWeekStart);
+  if (counts.has(weekKey(cursor))) {
+    while (counts.has(weekKey(cursor))) {
+      currentStreak += 1;
+      cursor.setDate(cursor.getDate() - 7);
+    }
+  } else {
+    cursor.setDate(cursor.getDate() - 7);
+    while (counts.has(weekKey(cursor))) {
+      currentStreak += 1;
+      cursor.setDate(cursor.getDate() - 7);
+    }
+    if (currentStreak > 0 && !counts.has(weekKey(todayWeekStart))) {
+      currentStreak = 0;
+    }
+  }
+
+  const allKeys = [...counts.keys()].sort();
+  let longestStreak = 0;
+  if (allKeys.length) {
+    let runLength = 0;
+    let walker = startOfIsoWeek(new Date(`${allKeys[0]}T00:00:00`));
+    const end = todayWeekStart;
+    while (walker <= end) {
+      if (counts.has(weekKey(walker))) {
+        runLength += 1;
+        longestStreak = Math.max(longestStreak, runLength);
+      } else {
+        runLength = 0;
+      }
+      walker.setDate(walker.getDate() + 7);
+    }
+  }
+  longestStreak = Math.max(longestStreak, currentStreak);
+
+  return { currentStreak, longestStreak };
+}
+
+// 5-step bucket (0–4) matching the legend swatches: 0 is always "no finishes", and
+// 1–4 scale relative to this library's own busiest week rather than fixed counts, so
+// the heatmap stays meaningful whether someone finishes 1 book a week or 5.
+function streakLevel(count, maxCount) {
+  if (count <= 0) return 0;
+  const fraction = count / maxCount;
+  if (fraction >= 0.99) return 4;
+  if (fraction >= 0.66) return 3;
+  if (fraction >= 0.33) return 2;
+  return 1;
+}
+
+function openWeekInLibrary(weekStart, weekEnd) {
+  elements.globalSearch.value = "";
+  elements.statusFilter.value = "finished";
+  libraryPage = 1;
+  setView("library");
+  render();
+  const startLabel = formatDisplayDate(toDateInput(weekStart));
+  const endLabel = formatDisplayDate(toDateInput(weekEnd));
+  elements.globalSearch.placeholder = `Showing books finished ${startLabel} – ${endLabel}`;
+}
+
+// ---------- Pace over time: average days-to-finish per month, as a line chart ----------
+
+function renderPaceOverTime(finishedEvents, { isAllTime, year }) {
+  const container = elements.paceChart;
+  container.innerHTML = "";
+
+  if (elements.paceSub) {
+    elements.paceSub.textContent = isAllTime
+      ? "Average days per book, by month, across every year you've logged."
+      : `Average days per book, by month, in ${year}.`;
+  }
+
+  const timed = finishedEvents.filter(
+    (readEvent) => readEvent.startDate && readEvent.finishDate && readEvent.startDate <= readEvent.finishDate
+  );
+
+  // Build the list of year-month points to plot.
+  // For a single year: 12 fixed month slots (Jan–Dec).
+  // For all-time: every month from the earliest finish through the current month.
+  let points;
+  if (!isAllTime) {
+    const monthBuckets = new Array(12).fill(null).map(() => []);
+    timed.forEach((readEvent) => {
+      const date = new Date(`${readEvent.finishDate}T00:00:00`);
+      if (date.getFullYear() !== year) return;
+      monthBuckets[date.getMonth()].push(Math.max(1, daysBetween(readEvent.startDate, readEvent.finishDate)));
+    });
+    points = monthBuckets.map((days, monthIndex) => ({
+      label: MONTH_LABELS[monthIndex],
+      avg: days.length ? Math.round(days.reduce((s, v) => s + v, 0) / days.length) : null,
+      count: days.length,
+      monthIndex,
+      pointYear: year,
+    }));
+  } else {
+    // Build a map of "YYYY-MM" → [days]
+    const buckets = new Map();
+    timed.forEach((readEvent) => {
+      const date = new Date(`${readEvent.finishDate}T00:00:00`);
+      const key = `${date.getFullYear()}-${String(date.getMonth()).padStart(2, "0")}`;
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key).push(Math.max(1, daysBetween(readEvent.startDate, readEvent.finishDate)));
+    });
+
+    if (!buckets.size) {
+      container.innerHTML = '<p class="pace-empty">Log a start and finish date on a couple more books to see your pace over time here.</p>';
+      return;
+    }
+
+    const sortedKeys = [...buckets.keys()].sort();
+    const firstKey = sortedKeys[0];
+    const now = new Date();
+    const lastKey = `${now.getFullYear()}-${String(now.getMonth()).padStart(2, "0")}`;
+
+    // Walk every month from first finish to now
+    const [firstYear, firstMonth] = firstKey.split("-").map(Number);
+    const [lastYear, lastMonth] = lastKey.split("-").map(Number);
+    points = [];
+    let y = firstYear, m = firstMonth;
+    while (y < lastYear || (y === lastYear && m <= lastMonth)) {
+      const key = `${y}-${String(m).padStart(2, "0")}`;
+      const days = buckets.get(key) || [];
+      // Label: show year at Jan or first point
+      const isJanOrFirst = m === 0 || (y === firstYear && m === firstMonth);
+      const label = isJanOrFirst
+        ? `${MONTH_LABELS[m]} '${String(y).slice(2)}`
+        : MONTH_LABELS[m];
+      points.push({
+        label,
+        avg: days.length ? Math.round(days.reduce((s, v) => s + v, 0) / days.length) : null,
+        count: days.length,
+        monthIndex: m,
+        pointYear: y,
+      });
+      m += 1;
+      if (m > 11) { m = 0; y += 1; }
+    }
+  }
+
+  const withData = points.filter((p) => p.avg !== null);
+  if (withData.length < 2) {
+    container.innerHTML = '<p class="pace-empty">Log a start and finish date on a couple more books to see your pace over time here.</p>';
+    return;
+  }
+
+  const viewWidth = 720;
+  const viewHeight = 200;
+  const padLeft = 40;
+  const padBottom = 26;
+  const padTop = 16;
+  const padRight = 16;
   const plotWidth = viewWidth - padLeft - padRight;
   const plotHeight = viewHeight - padTop - padBottom;
 
-  const maxDays = Math.max(...timed.map((entry) => entry.days)) * 1.08;
-  const maxPages = Math.max(...timed.map((entry) => entry.pages)) * 1.08;
+  const maxDays = Math.max(...withData.map((p) => p.avg)) * 1.15;
+  const niceMax = Math.ceil(maxDays / 4) * 4;
+
+  const xForIndex = (i) => padLeft + (plotWidth * i) / (points.length - 1);
+  const yForDays = (days) => padTop + plotHeight - (days / maxDays) * plotHeight;
 
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("viewBox", `0 0 ${viewWidth} ${viewHeight}`);
-  svg.setAttribute("class", "pace-svg");
+  svg.setAttribute("class", "pace-svg pace-line-svg");
   svg.setAttribute("role", "img");
-  svg.setAttribute("aria-label", "Scatter plot of days spent reading versus page count");
+  svg.setAttribute("aria-label", "Line chart of average days spent per book, by month");
+  svg.setAttribute("preserveAspectRatio", "none");
 
-  [0, 0.5, 1].forEach((fraction) => {
-    const y = padTop + plotHeight * fraction;
+  // Gridlines
+  [0, 0.25, 0.5, 0.75, 1].forEach((fraction) => {
+    const y = padTop + plotHeight * (1 - fraction);
     const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    line.setAttribute("x1", padLeft);
-    line.setAttribute("x2", padLeft + plotWidth);
-    line.setAttribute("y1", y);
-    line.setAttribute("y2", y);
+    line.setAttribute("x1", padLeft); line.setAttribute("x2", padLeft + plotWidth);
+    line.setAttribute("y1", y); line.setAttribute("y2", y);
     line.setAttribute("class", "pace-gridline");
     svg.append(line);
-
-    const pagesAtLine = Math.round(maxPages * (1 - fraction));
     const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
-    label.setAttribute("x", padLeft - 6);
-    label.setAttribute("y", y + 3);
-    label.setAttribute("text-anchor", "end");
-    label.setAttribute("class", "pace-axis-label");
-    label.textContent = pagesAtLine;
+    label.setAttribute("x", padLeft - 8); label.setAttribute("y", y + 3);
+    label.setAttribute("text-anchor", "end"); label.setAttribute("class", "pace-axis-label");
+    label.textContent = `${Math.round(niceMax * fraction)}d`;
     svg.append(label);
   });
 
-  [0, 0.5, 1].forEach((fraction) => {
-    const x = padLeft + plotWidth * fraction;
-    const daysAtLine = Math.round(maxDays * fraction);
-    const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
-    label.setAttribute("x", x);
-    label.setAttribute("y", viewHeight - 4);
-    label.setAttribute("text-anchor", fraction === 0 ? "start" : fraction === 1 ? "end" : "middle");
-    label.setAttribute("class", "pace-axis-label");
-    label.textContent = `${daysAtLine}d`;
-    svg.append(label);
+  // X-axis labels — show a subset to avoid crowding (every ~3 months for single year, every 2–3 for all-time)
+  const labelEvery = points.length <= 12 ? 1 : points.length <= 24 ? 2 : Math.ceil(points.length / 12);
+  points.forEach((p, i) => {
+    if (i % labelEvery !== 0 && i !== points.length - 1) return;
+    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    text.setAttribute("x", xForIndex(i)); text.setAttribute("y", viewHeight - 6);
+    text.setAttribute("text-anchor", "middle"); text.setAttribute("class", "pace-axis-label");
+    text.textContent = p.label;
+    svg.append(text);
   });
+
+  // Line path (gaps where avg is null)
+  let pathData = "";
+  let drawing = false;
+  points.forEach((p, i) => {
+    if (p.avg === null) { drawing = false; return; }
+    const x = xForIndex(i);
+    const y = yForDays(p.avg);
+    pathData += `${drawing ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)} `;
+    drawing = true;
+  });
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("d", pathData.trim());
+  path.setAttribute("class", "pace-line-path");
+  path.setAttribute("fill", "none");
+  svg.append(path);
 
   const tooltip = document.createElement("div");
   tooltip.className = "pace-tooltip";
   container.append(tooltip);
 
-  timed.forEach(({ readEvent, days, pages }) => {
-    const x = padLeft + (days / maxDays) * plotWidth;
-    const y = padTop + plotHeight - (pages / maxPages) * plotHeight;
-    const rereadSuffix = readEvent.isReread ? " (re-read)" : "";
+  // Dots for points with data
+  points.forEach((p, i) => {
+    if (p.avg === null) return;
+    const x = xForIndex(i);
+    const y = yForDays(p.avg);
     const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-    dot.setAttribute("cx", x);
-    dot.setAttribute("cy", y);
-    dot.setAttribute("r", 4);
-    dot.setAttribute("class", `pace-dot${readEvent.isReread ? " is-reread" : ""}`);
-    dot.setAttribute("tabindex", "0");
-    dot.setAttribute(
-      "aria-label",
-      `${readEvent.title}${rereadSuffix}: ${days} ${days === 1 ? "day" : "days"}, ${pages} pages`
+    dot.setAttribute("cx", x); dot.setAttribute("cy", y); dot.setAttribute("r", 4.5);
+    dot.setAttribute("class", "pace-line-dot"); dot.setAttribute("tabindex", "0");
+    dot.setAttribute("aria-label",
+      `${p.label}${!isAllTime ? ` ${year}` : ""}: averaged ${p.avg} ${p.avg === 1 ? "day" : "days"} per book across ${p.count} ${p.count === 1 ? "book" : "books"}`
     );
-
     const showTooltip = (domEvent) => {
       const rect = container.getBoundingClientRect();
       const point = domEvent.target.getBoundingClientRect();
-      tooltip.textContent = `${readEvent.title}${rereadSuffix} — ${days} ${days === 1 ? "day" : "days"}, ${pages} pages`;
+      tooltip.textContent = `${p.label} — averaged ${p.avg} ${p.avg === 1 ? "day" : "days"} per book (${p.count} ${p.count === 1 ? "book" : "books"})`;
       tooltip.style.left = `${point.left - rect.left + point.width / 2}px`;
       tooltip.style.top = `${point.top - rect.top}px`;
       tooltip.classList.add("is-visible");
     };
     const hideTooltip = () => tooltip.classList.remove("is-visible");
-
     dot.addEventListener("mouseenter", showTooltip);
     dot.addEventListener("mousemove", showTooltip);
     dot.addEventListener("mouseleave", hideTooltip);
     dot.addEventListener("focus", showTooltip);
     dot.addEventListener("blur", hideTooltip);
-    dot.addEventListener("click", () => openBook(readEvent.id));
-
+    dot.addEventListener("click", () => openMonthInLibrary(p.monthIndex, isAllTime ? p.pointYear : year));
     svg.append(dot);
   });
 
   container.append(svg);
 
-  const avgDays = Math.round(timed.reduce((sum, entry) => sum + entry.days, 0) / timed.length);
-  const avgPagesPerDay = Math.round(timed.reduce((sum, entry) => sum + entry.pages / entry.days, 0) / timed.length);
+  const overallAvg = Math.round(withData.reduce((s, p) => s + p.avg, 0) / withData.length);
   const summary = document.createElement("p");
   summary.className = "pace-summary";
-  summary.textContent = `On average, ${avgDays} ${avgDays === 1 ? "day" : "days"} per book, around ${avgPagesPerDay} pages a day.`;
+  summary.textContent = `Averaging ${overallAvg} ${overallAvg === 1 ? "day" : "days"} per book across the months you've logged.`;
   container.append(summary);
 }
 
@@ -1335,24 +1770,97 @@ function renderMonthSummary() {
   elements.monthPages.textContent = `${pages.toLocaleString()} pages logged`;
 }
 
-function bookCard(book) {
+// ---------- Library list row (replaces the old card grid) ----------
+//
+// A compact three-column row: thumbnail on the left, title/author/genre tags in the
+// middle, and status + rating + page count right-aligned. Scanning a long list is
+// faster in this format than in a grid of equal-size cards.
+
+function bookRow(book) {
+  const row = document.createElement("article");
+  row.className = "book-row";
+  row.setAttribute("role", "button");
+  row.setAttribute("tabindex", "0");
+  row.setAttribute("aria-label", `Open ${book.title}`);
+
+  const color = statusColor(book.status);
+  const genreTags = splitTagList(book.genres).slice(0, 2)
+    .map((g) => `<span class="book-row-tag">${escapeHtml(g)}</span>`)
+    .join("");
+
+  const ratingHtml = book.rating
+    ? `<span class="book-row-rating" aria-label="${book.rating} out of 5 stars">${starGlyphs(Number(book.rating))}</span>`
+    : "";
+
+  row.innerHTML = `
+    <div class="book-row-cover">${coverMarkup(book)}</div>
+    <div class="book-row-body">
+      <p class="book-row-title">${escapeHtml(book.title)}</p>
+      <p class="book-row-author">${escapeHtml(book.author || "Unknown author")}</p>
+      ${genreTags ? `<div class="book-row-tags">${genreTags}</div>` : ""}
+    </div>
+    <div class="book-row-right">
+      <span class="book-row-status">
+        <span class="book-row-dot" style="background:${color}"></span>
+        ${escapeHtml(statusLabel(book.status))}
+      </span>
+      ${ratingHtml}
+      ${book.pages ? `<span class="book-row-pages">${book.pages} pp</span>` : ""}
+    </div>
+  `;
+
+  const open = () => openBook(book.id);
+  row.addEventListener("click", open);
+  row.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      open();
+    }
+  });
+  return row;
+}
+
+// ---------- Currently-reading card (horizontal scroll row) ----------
+//
+// Wider than the old spotlight card and left-aligned so it reads as a proper
+// detail preview: large cover on the left, badge + title + author + genre chips
+// + day count on the right. The first card gets an accent left border.
+
+function readingCard(book) {
   const card = document.createElement("article");
-  const isReading = book.status === "reading";
-  card.className = `book-card${isReading ? " status-reading" : ""}`;
+  card.className = "reading-card";
+  card.setAttribute("role", "button");
+  card.setAttribute("tabindex", "0");
+  card.setAttribute("aria-label", `Open ${book.title}`);
+
+  const topGenre = splitTagList(book.genres)[0];
+  const dayLabel = spotlightDayLabel(book);
+
   card.innerHTML = `
-    <div class="cover-wrap">${coverMarkup(book)}</div>
-    <div class="book-card-body">
-      <span class="status-pill" style="${pillStyle(book.status)}">${escapeHtml(statusLabel(book.status))}</span>
-      <h4>${escapeHtml(book.title)}</h4>
-      <p>${escapeHtml(book.author || "Unknown author")}</p>
-      <div class="meta-line">
-        <span>${book.year || "No year"}</span>
-        <span>${book.pages ? `${book.pages} pages` : "No page count"}</span>
-        <span>${book.rating ? `${book.rating} stars` : "Unrated"}</span>
+    <div class="reading-card-cover">${coverMarkup(book)}</div>
+    <div class="reading-card-body">
+      <span class="reading-card-badge">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+        Reading
+      </span>
+      <h4 class="reading-card-title">${escapeHtml(book.title)}</h4>
+      <p class="reading-card-author">${escapeHtml(book.author || "Unknown author")}</p>
+      <div class="reading-card-meta">
+        ${topGenre ? `<span class="reading-card-genre">${escapeHtml(topGenre)}</span>` : ""}
+        <span class="reading-card-day">${escapeHtml(dayLabel)}</span>
+        ${book.pages ? `<span class="reading-card-pages">${book.pages} pages</span>` : ""}
       </div>
     </div>
   `;
-  card.addEventListener("click", () => openBook(book.id));
+
+  const open = () => openBook(book.id);
+  card.addEventListener("click", open);
+  card.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      open();
+    }
+  });
   return card;
 }
 
@@ -3078,11 +3586,49 @@ function finishRemoveStatus(id) {
 }
 
 elements.navTabs.forEach((tab) => tab.addEventListener("click", () => setView(tab.dataset.view)));
-elements.globalSearch?.addEventListener("input", render);
-elements.statusFilter?.addEventListener("change", render);
+elements.globalSearch?.addEventListener("input", () => {
+  libraryPage = 1;
+  render();
+});
+elements.statusFilter?.addEventListener("change", () => {
+  libraryPage = 1;
+  render();
+});
 elements.statsYearFilter?.addEventListener("change", () => {
   statsYear = elements.statsYearFilter.value;
   renderStats();
+});
+
+// Pill filter buttons in the library toolbar — sync to the hidden <select> so
+// the rest of the app (renderLibrary, statusFilter.value) keeps working unchanged.
+document.querySelectorAll(".filter-pill").forEach((pill) => {
+  pill.addEventListener("click", () => {
+    document.querySelectorAll(".filter-pill").forEach((p) => p.classList.remove("active"));
+    pill.classList.add("active");
+    if (elements.statusFilter) {
+      elements.statusFilter.value = pill.dataset.filter;
+    }
+    libraryPage = 1;
+    renderLibrary();
+  });
+});
+
+elements.paginationPrev?.addEventListener("click", () => {
+  if (libraryPage > 1) goToLibraryPage(libraryPage - 1);
+});
+elements.paginationNext?.addEventListener("click", () => {
+  goToLibraryPage(libraryPage + 1);
+});
+elements.paginationJumpInput?.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter") return;
+  event.preventDefault();
+  const requested = Number(elements.paginationJumpInput.value);
+  if (!Number.isFinite(requested) || requested < 1) return;
+  const pageCount = Number(elements.paginationJumpInput.max || 1);
+  goToLibraryPage(Math.min(requested, pageCount));
+});
+elements.paginationJumpInput?.addEventListener("blur", () => {
+  elements.paginationJumpInput.value = "";
 });
 
 // Settings dialog (Export / Import / Find missing covers / Sync) is wired up first and

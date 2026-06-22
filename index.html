@@ -79,7 +79,14 @@
               <h3 id="libraryHeading">Library</h3>
               <p>Your complete reading archive.</p>
             </div>
-            <select id="statusFilter" aria-label="Filter by status">
+            <div class="filter-pills" role="group" aria-label="Filter by status">
+              <button class="filter-pill active" type="button" data-filter="all">All</button>
+              <button class="filter-pill" type="button" data-filter="want">Want to read</button>
+              <button class="filter-pill" type="button" data-filter="finished">Finished</button>
+              <button class="filter-pill" type="button" data-filter="paused">Paused</button>
+            </div>
+            <!-- Hidden select kept for JS compatibility -->
+            <select id="statusFilter" aria-label="Filter by status" style="display:none">
               <option value="all">All books</option>
               <option value="want">Want to read</option>
               <option value="reading">Reading</option>
@@ -89,21 +96,25 @@
           </div>
 
           <div class="reading-spotlight" id="readingSpotlight" hidden>
-            <div class="spotlight-heading">
-              <div class="spotlight-heading-text">
-                <h3>Currently reading</h3>
-                <p>Picked up and still in progress.</p>
-              </div>
-              <span class="spotlight-count" id="spotlightCount"></span>
-            </div>
-            <div class="spotlight-grid" id="spotlightGrid"></div>
+            <p class="reading-section-label">Currently reading</p>
+            <div class="reading-scroll-row" id="spotlightGrid"></div>
           </div>
 
           <div class="library-divider" id="libraryDivider" hidden>
-            <span>Rest of the library</span>
+            <span id="libraryDividerLabel">Rest of library</span>
           </div>
 
-          <div class="book-grid" id="bookGrid"></div>
+          <div class="book-list" id="bookGrid"></div>
+
+          <nav class="pagination" id="libraryPagination" aria-label="Library pages" hidden>
+            <button class="pagination-arrow" type="button" id="paginationPrev" aria-label="Previous page">‹</button>
+            <div class="pagination-pages" id="paginationPages"></div>
+            <button class="pagination-arrow" type="button" id="paginationNext" aria-label="Next page">›</button>
+            <label class="pagination-jump">
+              <span class="sr-only">Go to page</span>
+              <input type="number" id="paginationJumpInput" min="1" inputmode="numeric" aria-label="Go to page number" />
+            </label>
+          </nav>
         </section>
 
         <section class="view" id="shelvesView" aria-labelledby="shelvesHeading">
@@ -169,11 +180,33 @@
               <div class="rating-bars" id="ratingBars"></div>
             </section>
 
-            <section class="stats-panel" aria-labelledby="paceHeading">
+            <section class="stats-panel stats-panel-wide" aria-labelledby="streaksHeading">
               <div class="stats-panel-head">
                 <div>
-                  <h4 id="paceHeading">Pace</h4>
-                  <p>Days spent per finished book.</p>
+                  <h4 id="streaksHeading">Reading streaks</h4>
+                  <p>Weeks you finished at least one book.</p>
+                </div>
+              </div>
+              <div class="streaks-summary" id="streaksSummary"></div>
+              <div class="streaks-grid-wrap">
+                <div class="streaks-grid" id="streaksGrid"></div>
+                <div class="streaks-legend">
+                  <span>Less</span>
+                  <span class="streaks-legend-swatch" data-level="0"></span>
+                  <span class="streaks-legend-swatch" data-level="1"></span>
+                  <span class="streaks-legend-swatch" data-level="2"></span>
+                  <span class="streaks-legend-swatch" data-level="3"></span>
+                  <span class="streaks-legend-swatch" data-level="4"></span>
+                  <span>More</span>
+                </div>
+              </div>
+            </section>
+
+            <section class="stats-panel stats-panel-wide" aria-labelledby="paceHeading">
+              <div class="stats-panel-head">
+                <div>
+                  <h4 id="paceHeading">Pace over time</h4>
+                  <p id="paceSub">Average days per book, by month.</p>
                 </div>
               </div>
               <div class="pace-chart" id="paceChart"></div>
