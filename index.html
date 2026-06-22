@@ -289,6 +289,25 @@
               ></div>
             </div>
           </label>
+          <label class="wide">
+            Recommendation
+            <div class="recommend-template">
+              <span class="recommend-piece">You'll</span>
+              <input
+                id="recommendUnlock"
+                class="recommend-blank"
+                placeholder="love"
+                aria-label="You'll ___ this"
+              />
+              <span class="recommend-piece">this if you</span>
+              <input
+                id="recommendCondition"
+                class="recommend-blank"
+                placeholder="enjoy slow-burn fantasy"
+                aria-label="if you ___"
+              />
+            </div>
+          </label>
         </div>
 
         <div class="dialog-actions" id="dialogActions">
@@ -329,12 +348,67 @@
             <div class="book-detail-tags" id="bookDetailGenres"></div>
             <div class="book-detail-tags" id="bookDetailTags"></div>
             <p class="book-detail-dates" id="bookDetailDates"></p>
-            <button class="primary-button" type="button" id="editBookFromDetail">Edit entry</button>
+            <div class="book-detail-actions">
+              <button class="primary-button" type="button" id="editBookFromDetail">Edit entry</button>
+              <button class="ghost-button" type="button" id="logReread">Log a re-read</button>
+            </div>
           </div>
         </div>
 
+        <p class="book-detail-recommend" id="bookDetailRecommend" hidden></p>
         <div class="book-detail-notes" id="bookDetailNotes"></div>
+
+        <div class="book-detail-rereads" id="bookDetailRereadsSection" hidden>
+          <div class="rereads-head">
+            <h4>Read history</h4>
+            <span class="rereads-count" id="rereadsCount"></span>
+          </div>
+          <div class="rereads-list" id="rereadsList"></div>
+        </div>
       </div>
+    </dialog>
+
+    <dialog id="rereadDialog">
+      <form class="dialog-card" id="rereadForm">
+        <div class="dialog-header">
+          <div>
+            <p class="eyebrow">Read history</p>
+            <h2 id="rereadDialogTitle">Log a re-read</h2>
+          </div>
+          <button class="icon-button" type="button" id="closeRereadDialog" aria-label="Close">×</button>
+        </div>
+
+        <input type="hidden" id="rereadId" />
+        <input type="hidden" id="rereadBookId" />
+
+        <div class="form-grid">
+          <label>
+            Start date
+            <input id="rereadStartDate" type="date" />
+          </label>
+          <label>
+            Finish date
+            <input id="rereadFinishDate" type="date" />
+          </label>
+          <label class="wide">
+            Rating
+            <div class="star-rating" id="rereadStarRating" role="slider" tabindex="0" aria-label="Re-read rating" aria-valuemin="0" aria-valuemax="5" aria-valuenow="0" aria-valuetext="Not rated"></div>
+            <input type="hidden" id="rereadRating" />
+          </label>
+          <label class="wide">
+            Notes
+            <textarea id="rereadNotes" rows="3" placeholder="What stood out this time around..."></textarea>
+          </label>
+        </div>
+
+        <div class="dialog-actions" id="rereadDialogActions">
+          <button class="danger-button" type="button" id="deleteReread" hidden>Remove</button>
+          <div>
+            <button class="ghost-button" type="button" id="cancelReread">Cancel</button>
+            <button class="primary-button" type="submit">Save</button>
+          </div>
+        </div>
+      </form>
     </dialog>
 
     <dialog id="manageStatusesDialog">

@@ -193,8 +193,22 @@ const elements = {
   bookDetailGenres: $("#bookDetailGenres"),
   bookDetailTags: $("#bookDetailTags"),
   bookDetailDates: $("#bookDetailDates"),
+  bookDetailRecommend: $("#bookDetailRecommend"),
   bookDetailNotes: $("#bookDetailNotes"),
   editBookFromDetail: $("#editBookFromDetail"),
+  recommendUnlock: $("#recommendUnlock"),
+  recommendCondition: $("#recommendCondition"),
+  logReread: $("#logReread"),
+  bookDetailRereadsSection: $("#bookDetailRereadsSection"),
+  rereadsCount: $("#rereadsCount"),
+  rereadsList: $("#rereadsList"),
+  rereadDialog: $("#rereadDialog"),
+  rereadForm: $("#rereadForm"),
+  rereadDialogTitle: $("#rereadDialogTitle"),
+  rereadStarRating: $("#rereadStarRating"),
+  rereadRatingInput: $("#rereadRating"),
+  deleteReread: $("#deleteReread"),
+  cancelReread: $("#cancelReread"),
 };
 
 function loadBooks() {
@@ -287,17 +301,87 @@ function setView(view) {
   if (view === "bookshelf") renderBookshelf();
 }
 
-// A book occupies a day on the calendar if that day is its start date, its finish
-// date, or falls strictly between the two (i.e. still being read that day). Returns
-// "started" | "finished" | "in-progress" | null. If startDate and finishDate land on
-// the same day, "finished" wins so the book doesn't show twice.
-function dayStatusForBook(book, dateKey) {
-  if (book.finishDate === dateKey) return "finished";
-  if (book.startDate === dateKey) return "started";
-  if (book.startDate && book.finishDate && book.startDate < dateKey && dateKey < book.finishDate) {
+// ---------- Re-reads: flattening a book's multiple read-throughs into events ----------
+//
+// Each book keeps its existing top-level startDate/finishDate/rating as its "primary"
+// read-through (zero migration needed for books that predate this feature). Additional
+// read-throughs live in book.rereads, an array of { id, startDate, finishDate, rating,
+// notes }. readEventsFor() flattens both into a single ordered list of "read events" so
+// Calendar, Stats, and Pace can treat every read-through the same way, while Book
+// Details can still tell them apart (isReread) to render history and route edits.
+
+function readEventsFor(book) {
+  const events = [];
+
+  if (book.startDate || book.finishDate) {
+    events.push({
+      book,
+      eventId: "",
+      title: book.title,
+      id: book.id,
+      pages: book.pages,
+      genres: book.genres,
+      startDate: book.startDate || "",
+      finishDate: book.finishDate || "",
+      rating: book.rating || "",
+      notes: book.notes || "",
+      isReread: false,
+    });
+  }
+
+  (book.rereads || []).forEach((reread) => {
+    if (!reread.startDate && !reread.finishDate) return;
+    events.push({
+      book,
+      eventId: reread.id,
+      title: book.title,
+      id: book.id,
+      pages: book.pages,
+      genres: book.genres,
+      startDate: reread.startDate || "",
+      finishDate: reread.finishDate || "",
+      rating: reread.rating || "",
+      notes: reread.notes || "",
+      isReread: true,
+    });
+  });
+
+  return events;
+}
+
+// Every read event across the whole library, flattened. Used anywhere stats need to
+// count/measure each read-through rather than each book.
+function allReadEvents() {
+  return books.flatMap((book) => readEventsFor(book));
+}
+
+function rereadCount(book) {
+  return (book.rereads || []).length;
+}
+
+// A read event (the primary read, or any logged re-read) occupies a day on the
+// calendar if that day is its start date, its finish date, or falls strictly between
+// the two (i.e. still being read that day). Returns "started" | "finished" |
+// "in-progress" | null. If startDate and finishDate land on the same day, "finished"
+// wins so the event doesn't show twice.
+function dayStatusForEvent(event, dateKey) {
+  if (event.finishDate === dateKey) return "finished";
+  if (event.startDate === dateKey) return "started";
+  if (event.startDate && event.finishDate && event.startDate < dateKey && dateKey < event.finishDate) {
     return "in-progress";
   }
   return null;
+}
+
+// Every read event (across every book, including re-reads) that touches a given
+// calendar day, each tagged with its day status. A book with several read-throughs
+// can appear more than once on the same day's list if, say, a re-read's start date
+// happens to land on the same day as the primary read's finish date — rare, but
+// correct to show both.
+function eventsForDay(dateKey) {
+  return allReadEvents()
+    .map((event) => ({ event, status: dayStatusForEvent(event, dateKey) }))
+    .filter(({ status }) => status);
 }
 
 function calendarCoverClass(status) {
@@ -352,21 +436,26 @@ function renderCalendar() {
 
     const date = new Date(year, month, dayNumber);
     const dateKey = toDateInput(date);
-    const entries = books
-      .filter((book) => dayStatusForBook(book, dateKey))
-      .map((book) => ({ book, status: dayStatusForBook(book, dateKey) }));
+    const entries = eventsForDay(dateKey);
     const isToday = dateKey === toDateInput(new Date());
 
     cell.innerHTML = `<div class="day-top"><span>${dayNumber}</span>${isToday ? "<b>Today</b>" : ""}</div>`;
 
-    entries.slice(0, CALENDAR_DAY_PREVIEW_LIMIT).forEach(({ book, status }) => {
+    entries.slice(0, CALENDAR_DAY_PREVIEW_LIMIT).forEach(({ event: readEvent, status }) => {
+      const book = readEvent.book;
       const coverButton = document.createElement("button");
       coverButton.type = "button";
       coverButton.className = `calendar-cover ${calendarCoverClass(status)}`;
-      coverButton.setAttribute("aria-label", `${calendarStatusLabel(status)} ${book.title}`);
+      coverButton.setAttribute(
+        "aria-label",
+        `${calendarStatusLabel(status)} ${book.title}${readEvent.isReread ? " (re-read)" : ""}`
+      );
       coverButton.innerHTML = coverMarkup(book);
-      coverButton.addEventListener("click", (event) => {
-        event.stopPropagation();
+      if (readEvent.isReread) {
+        coverButton.insertAdjacentHTML("beforeend", '<span class="reread-mark" aria-hidden="true">↻</span>');
+      }
+      coverButton.addEventListener("click", (domEvent) => {
+        domEvent.stopPropagation();
         openBook(book.id);
       });
       cell.append(coverButton);
@@ -377,8 +466,8 @@ function renderCalendar() {
       more.type = "button";
       more.className = "more-count";
       more.textContent = `+${entries.length - CALENDAR_DAY_PREVIEW_LIMIT} more`;
-      more.addEventListener("click", (event) => {
-        event.stopPropagation();
+      more.addEventListener("click", (domEvent) => {
+        domEvent.stopPropagation();
         openDayBooks(dateKey, entries);
       });
       cell.append(more);
@@ -401,9 +490,10 @@ function openDayBooks(dateKey, entries) {
   elements.dayBooksTitle.textContent = `${entries.length} ${entries.length === 1 ? "book" : "books"} logged`;
   elements.dayBooksList.innerHTML = "";
 
-  entries.forEach(({ book, status }) => {
-    const row = compactBook(book, {
-      badgeText: calendarStatusLabel(status),
+  entries.forEach(({ event: readEvent, status }) => {
+    const badgeText = calendarStatusLabel(status) + (readEvent.isReread ? " · re-read" : "");
+    const row = compactBook(readEvent.book, {
+      badgeText,
       badgeClass: calendarBadgeClass(status),
     });
     elements.dayBooksList.append(row);
@@ -544,14 +634,26 @@ function openShelfInLibrary(statusId) {
   render();
 }
 
+// The bookshelf shows one spine per book (re-reading a book doesn't grow a second
+// spine for it), but a book should appear if ANY of its read-throughs — the primary
+// read or a re-read — finished this year, using whichever finish is most recent for
+// sorting. This way re-reading an old favorite this year brings it back onto the
+// shelf, the same as finishing it for the first time would.
+function mostRecentFinishThisYear(book, currentYear) {
+  const finishesThisYear = readEventsFor(book)
+    .map((event) => event.finishDate)
+    .filter((finishDate) => finishDate && new Date(`${finishDate}T00:00:00`).getFullYear() === currentYear);
+  if (!finishesThisYear.length) return null;
+  return finishesThisYear.sort().at(-1);
+}
+
 function renderBookshelf() {
   const currentYear = new Date().getFullYear();
   const finishedThisYear = filteredBooks()
-    .filter((book) => {
-      const finishedDate = book.finishDate ? new Date(`${book.finishDate}T00:00:00`) : null;
-      return finishedDate && finishedDate.getFullYear() === currentYear;
-    })
-    .sort((a, b) => new Date(`${b.finishDate}T00:00:00`) - new Date(`${a.finishDate}T00:00:00`));
+    .map((book) => ({ book, latestFinish: mostRecentFinishThisYear(book, currentYear) }))
+    .filter((entry) => entry.latestFinish)
+    .sort((a, b) => new Date(`${b.latestFinish}T00:00:00`) - new Date(`${a.latestFinish}T00:00:00`))
+    .map((entry) => entry.book);
 
   elements.bookshelfStage.innerHTML = "";
 
@@ -603,17 +705,21 @@ function bucketSpinesIntoRows(orderedBooks, maxRowWidth) {
   return rows;
 }
 
-function booksTouchYear(book, year) {
-  const startYear = book.startDate ? Number(book.startDate.slice(0, 4)) : null;
-  const finishYear = book.finishDate ? Number(book.finishDate.slice(0, 4)) : null;
-  return startYear === year || finishYear === year;
+// True if any read-through of this book (primary or re-read) touches the given year,
+// by start or finish date.
+function bookTouchesYear(book, year) {
+  return readEventsFor(book).some((event) => {
+    const startYear = event.startDate ? Number(event.startDate.slice(0, 4)) : null;
+    const finishYear = event.finishDate ? Number(event.finishDate.slice(0, 4)) : null;
+    return startYear === year || finishYear === year;
+  });
 }
 
 function availableStatsYears() {
   const years = new Set();
-  books.forEach((book) => {
-    if (book.startDate) years.add(Number(book.startDate.slice(0, 4)));
-    if (book.finishDate) years.add(Number(book.finishDate.slice(0, 4)));
+  allReadEvents().forEach((event) => {
+    if (event.startDate) years.add(Number(event.startDate.slice(0, 4)));
+    if (event.finishDate) years.add(Number(event.finishDate.slice(0, 4)));
   });
   years.add(new Date().getFullYear());
   return [...years].sort((a, b) => b - a);
@@ -641,17 +747,25 @@ function renderStats() {
   const isAllTime = statsYear === "all";
   const year = Number(statsYear);
 
-  const scopedBooks = isAllTime ? books : books.filter((book) => booksTouchYear(book, year));
-  const finished = scopedBooks.filter((book) => {
-    if (book.status !== "finished") return false;
+  const scopedBooks = isAllTime ? books : books.filter((book) => bookTouchesYear(book, year));
+
+  // Every finished read-through (the primary read, plus any logged re-read) counts on
+  // its own — re-reading a favorite book this year shows up as another finish, not a
+  // repeat of the same one. A read-through "finished" purely by having a finishDate in
+  // scope; it no longer depends on the book's *current* status, since a book can be
+  // back on the "reading" shelf for a fresh re-read while its earlier finishes remain
+  // historical fact.
+  const finished = allReadEvents().filter((event) => {
+    if (!event.finishDate) return false;
     if (isAllTime) return true;
-    return book.finishDate && Number(book.finishDate.slice(0, 4)) === year;
+    return Number(event.finishDate.slice(0, 4)) === year;
   });
-  const finishedWithDates = finished.filter((book) => book.finishDate);
-  const pages = finished.reduce((sum, book) => sum + Number(book.pages || 0), 0);
-  const rated = finished.filter((book) => book.rating);
+  const finishedWithDates = finished;
+  const rereadFinishes = finished.filter((event) => event.isReread);
+  const pages = finished.reduce((sum, event) => sum + Number(event.pages || 0), 0);
+  const rated = finished.filter((event) => event.rating);
   const averageRating = rated.length
-    ? rated.reduce((sum, book) => sum + Number(book.rating), 0) / rated.length
+    ? rated.reduce((sum, event) => sum + Number(event.rating), 0) / rated.length
     : null;
   const genreCounts = genreCountsFor(finished);
   const topGenreEntry = Object.entries(genreCounts).sort((a, b) => b[1] - a[1])[0];
@@ -663,12 +777,12 @@ function renderStats() {
     return Number(book.startDate.slice(0, 4)) === year;
   });
 
-  renderStatsHero({ scopedBooks, finished, pages, averageRating, topGenreEntry, currentlyReading });
+  renderStatsHero({ scopedBooks, finished, pages, averageRating, topGenreEntry, currentlyReading, rereadFinishes });
   renderRhythmChart(finishedWithDates, { isAllTime, year });
   renderGenreDonut(genreCounts);
   renderRatingBars(rated);
   renderPaceChart(finishedWithDates);
-  renderInsights({ finished, finishedWithDates, pages, averageRating, genreCounts, rated, isAllTime, year, scopedBooks });
+  renderInsights({ finished, finishedWithDates, pages, averageRating, genreCounts, rated, isAllTime, year, scopedBooks, rereadFinishes });
 }
 
 function genreCountsFor(bookList) {
@@ -681,16 +795,23 @@ function genreCountsFor(bookList) {
 
 const HERO_ACCENTS = ["var(--sage)", "var(--rose)", "var(--blue)"];
 
-function renderStatsHero({ scopedBooks, finished, pages, averageRating, topGenreEntry, currentlyReading }) {
+function renderStatsHero({ scopedBooks, finished, pages, averageRating, topGenreEntry, currentlyReading, rereadFinishes }) {
   const avgPages = finished.length ? Math.round(pages / finished.length) : 0;
   const ratingDisplay = averageRating ? averageRating.toFixed(1) : "—";
   const topGenre = topGenreEntry?.[0] || "Add some genres";
+  const rereadCount = rereadFinishes?.length || 0;
+
+  const finishedNote = rereadCount
+    ? `Includes ${rereadCount} re-read${rereadCount === 1 ? "" : "s"}`
+    : avgPages
+      ? `Averaging ${avgPages.toLocaleString()} pages per book`
+      : "No finished books yet";
 
   const cards = [
     {
       label: "Books finished",
       value: finished.length,
-      note: avgPages ? `Averaging ${avgPages.toLocaleString()} pages per book` : "No finished books yet",
+      note: finishedNote,
     },
     {
       label: "Pages read",
@@ -729,8 +850,8 @@ function renderRhythmChart(finishedWithDates, { isAllTime, year }) {
   elements.rhythmChart.innerHTML = "";
 
   const counts = new Array(12).fill(0);
-  finishedWithDates.forEach((book) => {
-    const date = new Date(`${book.finishDate}T00:00:00`);
+  finishedWithDates.forEach((readEvent) => {
+    const date = new Date(`${readEvent.finishDate}T00:00:00`);
     if (isAllTime || date.getFullYear() === year) counts[date.getMonth()] += 1;
   });
 
@@ -938,16 +1059,16 @@ function starGlyphsOutOfFive(value) {
 
 // ---------- Pace: days spent reading vs. page count, as a scatter ----------
 
-function renderPaceChart(finishedWithDates) {
+function renderPaceChart(finishedEvents) {
   const container = elements.paceChart;
   container.innerHTML = "";
 
-  const timed = finishedWithDates
-    .filter((book) => book.startDate && book.finishDate && book.startDate <= book.finishDate)
-    .map((book) => ({
-      book,
-      days: Math.max(1, daysBetween(book.startDate, book.finishDate)),
-      pages: Number(book.pages || 0),
+  const timed = finishedEvents
+    .filter((readEvent) => readEvent.startDate && readEvent.finishDate && readEvent.startDate <= readEvent.finishDate)
+    .map((readEvent) => ({
+      readEvent,
+      days: Math.max(1, daysBetween(readEvent.startDate, readEvent.finishDate)),
+      pages: Number(readEvent.pages || 0),
     }))
     .filter((entry) => entry.pages > 0);
 
@@ -1014,21 +1135,25 @@ function renderPaceChart(finishedWithDates) {
   tooltip.className = "pace-tooltip";
   container.append(tooltip);
 
-  timed.forEach(({ book, days, pages }) => {
+  timed.forEach(({ readEvent, days, pages }) => {
     const x = padLeft + (days / maxDays) * plotWidth;
     const y = padTop + plotHeight - (pages / maxPages) * plotHeight;
+    const rereadSuffix = readEvent.isReread ? " (re-read)" : "";
     const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
     dot.setAttribute("cx", x);
     dot.setAttribute("cy", y);
     dot.setAttribute("r", 4);
-    dot.setAttribute("class", "pace-dot");
+    dot.setAttribute("class", `pace-dot${readEvent.isReread ? " is-reread" : ""}`);
     dot.setAttribute("tabindex", "0");
-    dot.setAttribute("aria-label", `${book.title}: ${days} ${days === 1 ? "day" : "days"}, ${pages} pages`);
+    dot.setAttribute(
+      "aria-label",
+      `${readEvent.title}${rereadSuffix}: ${days} ${days === 1 ? "day" : "days"}, ${pages} pages`
+    );
 
-    const showTooltip = (event) => {
+    const showTooltip = (domEvent) => {
       const rect = container.getBoundingClientRect();
-      const point = event.target.getBoundingClientRect();
-      tooltip.textContent = `${book.title} — ${days} ${days === 1 ? "day" : "days"}, ${pages} pages`;
+      const point = domEvent.target.getBoundingClientRect();
+      tooltip.textContent = `${readEvent.title}${rereadSuffix} — ${days} ${days === 1 ? "day" : "days"}, ${pages} pages`;
       tooltip.style.left = `${point.left - rect.left + point.width / 2}px`;
       tooltip.style.top = `${point.top - rect.top}px`;
       tooltip.classList.add("is-visible");
@@ -1040,7 +1165,7 @@ function renderPaceChart(finishedWithDates) {
     dot.addEventListener("mouseleave", hideTooltip);
     dot.addEventListener("focus", showTooltip);
     dot.addEventListener("blur", hideTooltip);
-    dot.addEventListener("click", () => openBook(book.id));
+    dot.addEventListener("click", () => openBook(readEvent.id));
 
     svg.append(dot);
   });
@@ -1063,14 +1188,14 @@ function daysBetween(startDate, finishDate) {
 
 // ---------- Dynamic insights: a handful of plain-language observations ----------
 
-function renderInsights({ finished, finishedWithDates, pages, averageRating, genreCounts, rated, isAllTime, year, scopedBooks }) {
+function renderInsights({ finished, finishedWithDates, pages, averageRating, genreCounts, rated, isAllTime, year, scopedBooks, rereadFinishes }) {
   const insights = [];
 
   // Busiest month
   if (finishedWithDates.length) {
     const counts = new Map();
-    finishedWithDates.forEach((book) => {
-      const date = new Date(`${book.finishDate}T00:00:00`);
+    finishedWithDates.forEach((readEvent) => {
+      const date = new Date(`${readEvent.finishDate}T00:00:00`);
       if (!isAllTime && date.getFullYear() !== year) return;
       const key = isAllTime
         ? `${date.getFullYear()}-${date.getMonth()}`
@@ -1106,13 +1231,13 @@ function renderInsights({ finished, finishedWithDates, pages, averageRating, gen
 
   // Fastest read
   const timed = finishedWithDates
-    .filter((book) => book.startDate && book.finishDate && book.startDate <= book.finishDate && Number(book.pages) > 0)
-    .map((book) => ({ book, days: Math.max(1, daysBetween(book.startDate, book.finishDate)) }));
+    .filter((readEvent) => readEvent.startDate && readEvent.finishDate && readEvent.startDate <= readEvent.finishDate && Number(readEvent.pages) > 0)
+    .map((readEvent) => ({ readEvent, days: Math.max(1, daysBetween(readEvent.startDate, readEvent.finishDate)) }));
   if (timed.length) {
     const fastest = [...timed].sort((a, b) => a.days - b.days)[0];
     insights.push({
       glyph: "⚡",
-      html: `<strong>${escapeHtml(fastest.book.title)}</strong> was your fastest read this period, finished in <strong>${
+      html: `<strong>${escapeHtml(fastest.readEvent.title)}</strong> was your fastest read this period, finished in <strong>${
         fastest.days
       } ${fastest.days === 1 ? "day" : "days"}</strong>.`,
     });
@@ -1130,7 +1255,7 @@ function renderInsights({ finished, finishedWithDates, pages, averageRating, gen
   }
 
   // Longest book
-  const withPages = finished.filter((book) => Number(book.pages) > 0);
+  const withPages = finished.filter((readEvent) => Number(readEvent.pages) > 0);
   if (withPages.length) {
     const longest = [...withPages].sort((a, b) => Number(b.pages) - Number(a.pages))[0];
     insights.push({
@@ -1141,10 +1266,26 @@ function renderInsights({ finished, finishedWithDates, pages, averageRating, gen
     });
   }
 
+  // Re-reads
+  if (rereadFinishes?.length) {
+    const mostReread = [...books]
+      .filter((book) => rereadCount(book) > 0)
+      .sort((a, b) => rereadCount(b) - rereadCount(a))[0];
+    if (mostReread) {
+      const count = rereadCount(mostReread);
+      insights.push({
+        glyph: "↻",
+        html: `You've gone back to <strong>${escapeHtml(mostReread.title)}</strong> <strong>${count} ${
+          count === 1 ? "time" : "times"
+        }</strong>.`,
+      });
+    }
+  }
+
   // Pace trend (compare first half vs second half of the scoped period, all-time only meaningful with enough data)
   if (timed.length >= 4) {
     const sorted = [...timed].sort(
-      (a, b) => new Date(`${a.book.finishDate}T00:00:00`) - new Date(`${b.book.finishDate}T00:00:00`)
+      (a, b) => new Date(`${a.readEvent.finishDate}T00:00:00`) - new Date(`${b.readEvent.finishDate}T00:00:00`)
     );
     const midpoint = Math.floor(sorted.length / 2);
     const earlierAvg = average(sorted.slice(0, midpoint).map((entry) => entry.days));
@@ -1342,6 +1483,7 @@ function bookSpine(book, index) {
     <span class="spine-title">${escapeHtml(book.title)}</span>
     <span class="spine-gilt" aria-hidden="true"></span>
     <span class="spine-author">${escapeHtml(book.author || "Unknown")}</span>
+    ${rereadCount(book) > 0 ? '<span class="spine-reread-mark" aria-hidden="true">↻</span>' : ""}
   `;
   applyCoverColor(book, spine);
   spine.addEventListener("click", () => openBook(book.id));
@@ -1470,6 +1612,8 @@ function openAddBook(date = "") {
   elements.bookForm.reset();
   $("#bookId").value = "";
   $("#notes").innerHTML = "";
+  $("#recommendUnlock").value = "";
+  $("#recommendCondition").value = "";
   $("#startDate").value = date;
   $("#status").value = date ? "reading" : "want";
   setStarRatingFromValue("");
@@ -1523,7 +1667,92 @@ function renderBookDetail(book) {
     .join("");
 
   elements.bookDetailDates.textContent = bookDetailDateSummary(book);
+  renderBookDetailRecommend(book);
   elements.bookDetailNotes.innerHTML = notesToEditableHtml(book.notes);
+  renderBookDetailRereads(book);
+}
+
+// Shows the "You'll [x] this if you [y]" line on the detail page only when at
+// least one blank was actually filled in — an empty template would just be
+// noise on books added before this field existed, or left blank on purpose.
+function renderBookDetailRecommend(book) {
+  const unlock = (book.recommendUnlock || "").trim();
+  const condition = (book.recommendCondition || "").trim();
+
+  if (!unlock && !condition) {
+    elements.bookDetailRecommend.hidden = true;
+    elements.bookDetailRecommend.innerHTML = "";
+    return;
+  }
+
+  elements.bookDetailRecommend.hidden = false;
+  elements.bookDetailRecommend.innerHTML = `You'll <strong>${escapeHtml(
+    unlock || "…"
+  )}</strong> this if you <strong>${escapeHtml(condition || "…")}</strong>`;
+}
+
+// ---------- Read history (re-reads) on the Book Details page ----------
+//
+// Shows every past read-through as a small reverse-chronological list — newest
+// first, since that's most often what you'd want to glance at ("when did I last
+// read this?"). The primary read-through is included alongside re-reads so the
+// list reads as one continuous history rather than splitting "the real read" from
+// "the re-reads" arbitrarily. Each row is clickable to edit that specific entry.
+function renderBookDetailRereads(book) {
+  const events = readEventsFor(book).sort((a, b) => {
+    const aKey = a.finishDate || a.startDate || "";
+    const bKey = b.finishDate || b.startDate || "";
+    return bKey.localeCompare(aKey);
+  });
+
+  if (events.length < 2) {
+    elements.bookDetailRereadsSection.hidden = true;
+    elements.rereadsList.innerHTML = "";
+    return;
+  }
+
+  elements.bookDetailRereadsSection.hidden = false;
+  elements.rereadsCount.textContent = `${events.length} read-throughs`;
+  elements.rereadsList.innerHTML = "";
+
+  events.forEach((event) => {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "reread-row";
+
+    const dateLabel = rereadRowDateLabel(event);
+    const ratingLabel = event.rating ? `${starGlyphsOutOfFive(Number(event.rating))}` : "";
+
+    row.innerHTML = `
+      <span class="reread-row-icon" aria-hidden="true">${event.isReread ? "↻" : "●"}</span>
+      <span class="reread-row-body">
+        <strong>${event.isReread ? "Re-read" : "First read"}</strong>
+        <span class="reread-row-date">${escapeHtml(dateLabel)}</span>
+        ${event.notes ? `<span class="reread-row-notes">${notesToEditableHtml(event.notes)}</span>` : ""}
+      </span>
+      ${ratingLabel ? `<span class="reread-row-rating" aria-hidden="true">${ratingLabel}</span>` : ""}
+    `;
+
+    row.addEventListener("click", () => {
+      if (event.isReread) {
+        openRereadEdit(book.id, event.eventId);
+      } else {
+        elements.bookDetailDialog.close();
+        openBookEdit(book.id, { returnTo: "detail" });
+      }
+    });
+
+    elements.rereadsList.append(row);
+  });
+}
+
+function rereadRowDateLabel(event) {
+  const started = event.startDate ? formatDisplayDate(event.startDate) : "";
+  const finished = event.finishDate ? formatDisplayDate(event.finishDate) : "";
+  if (started && finished) return `${started} – ${finished}`;
+  if (finished) return `Finished ${finished}`;
+  if (started) return `Started ${started}`;
+  return "No dates logged";
 }
 
 function splitTagList(value) {
@@ -1536,11 +1765,13 @@ function splitTagList(value) {
 function bookDetailDateSummary(book) {
   const started = book.startDate ? formatDisplayDate(book.startDate) : "";
   const finished = book.finishDate ? formatDisplayDate(book.finishDate) : "";
+  const count = rereadCount(book);
+  const rereadSuffix = count > 0 ? ` · Re-read ${count} ${count === 1 ? "time" : "times"}` : "";
 
-  if (started && finished) return `Started ${started} · Finished ${finished}`;
-  if (finished) return `Finished ${finished}`;
-  if (started) return `Started ${started}`;
-  return book.status === "want" ? "Not started yet" : "No dates logged";
+  if (started && finished) return `Started ${started} · Finished ${finished}${rereadSuffix}`;
+  if (finished) return `Finished ${finished}${rereadSuffix}`;
+  if (started) return `Started ${started}${rereadSuffix}`;
+  return (book.status === "want" ? "Not started yet" : "No dates logged") + rereadSuffix;
 }
 
 function formatDisplayDate(dateKey) {
@@ -1572,6 +1803,8 @@ function openBookEdit(id, { returnTo = "" } = {}) {
   $("#genres").value = book.genres || "";
   $("#tags").value = book.tags || "";
   $("#notes").innerHTML = notesToEditableHtml(book.notes);
+  $("#recommendUnlock").value = book.recommendUnlock || "";
+  $("#recommendCondition").value = book.recommendCondition || "";
   $("#dialogTitle").textContent = "Edit book";
   elements.deleteBook.hidden = false;
   elements.deleteConfirm.hidden = true;
@@ -1596,7 +1829,86 @@ function collectFormBook() {
     genres: $("#genres").value.trim(),
     tags: $("#tags").value.trim(),
     notes: collectNotesHtml(),
+    recommendUnlock: $("#recommendUnlock").value.trim(),
+    recommendCondition: $("#recommendCondition").value.trim(),
   };
+}
+
+// ---------- Log a re-read dialog ----------
+//
+// A re-read is a separate, lightweight start/finish/rating/notes entry stored in
+// book.rereads, never touching the book's own primary startDate/finishDate. This
+// way logging a new read-through is purely additive — the original read stays
+// exactly as it was, and the new one just joins the read history list.
+
+function openRereadAdd(bookId) {
+  const book = books.find((item) => item.id === bookId);
+  if (!book) return;
+
+  $("#rereadId").value = "";
+  $("#rereadBookId").value = bookId;
+  $("#rereadDialogTitle").textContent = "Log a re-read";
+  $("#rereadStartDate").value = "";
+  $("#rereadFinishDate").value = toDateInput(new Date());
+  $("#rereadNotes").value = "";
+  setStarRatingFromValue("", elements.rereadStarRating, elements.rereadRatingInput);
+  elements.deleteReread.hidden = true;
+  elements.rereadDialog.showModal();
+}
+
+function openRereadEdit(bookId, rereadId) {
+  const book = books.find((item) => item.id === bookId);
+  const reread = book?.rereads?.find((item) => item.id === rereadId);
+  if (!book || !reread) return;
+
+  $("#rereadId").value = reread.id;
+  $("#rereadBookId").value = bookId;
+  $("#rereadDialogTitle").textContent = "Edit re-read";
+  $("#rereadStartDate").value = reread.startDate || "";
+  $("#rereadFinishDate").value = reread.finishDate || "";
+  $("#rereadNotes").value = reread.notes || "";
+  setStarRatingFromValue(reread.rating, elements.rereadStarRating, elements.rereadRatingInput);
+  elements.deleteReread.hidden = false;
+  elements.rereadDialog.showModal();
+}
+
+function saveRereadFromForm() {
+  const bookId = $("#rereadBookId").value;
+  const book = books.find((item) => item.id === bookId);
+  if (!book) return;
+
+  const entry = {
+    id: $("#rereadId").value || crypto.randomUUID(),
+    startDate: $("#rereadStartDate").value,
+    finishDate: $("#rereadFinishDate").value,
+    rating: $("#rereadRating").value,
+    notes: $("#rereadNotes").value.trim(),
+  };
+
+  if (!entry.startDate && !entry.finishDate) return;
+
+  book.rereads = book.rereads || [];
+  const existingIndex = book.rereads.findIndex((item) => item.id === entry.id);
+  if (existingIndex >= 0) book.rereads[existingIndex] = entry;
+  else book.rereads.push(entry);
+
+  saveBooks();
+  render();
+  elements.rereadDialog.close();
+  if (elements.bookDetailDialog.open) renderBookDetail(book);
+}
+
+function deleteRereadFromForm() {
+  const bookId = $("#rereadBookId").value;
+  const rereadId = $("#rereadId").value;
+  const book = books.find((item) => item.id === bookId);
+  if (!book || !rereadId) return;
+
+  book.rereads = (book.rereads || []).filter((item) => item.id !== rereadId);
+  saveBooks();
+  render();
+  elements.rereadDialog.close();
+  if (elements.bookDetailDialog.open) renderBookDetail(book);
 }
 
 async function searchBooks() {
@@ -2531,12 +2843,15 @@ function setupNotesEditor() {
 }
 
 // ---------- Star rating widget (supports half-star precision) ----------
+//
+// Generalized to support more than one instance on the page (the main book
+// form's rating, and the re-read dialog's rating use separate containers/
+// inputs/clip-id namespaces so they don't collide).
 
 const STAR_PATH =
   "M12 2.4l2.74 6.49 7.02.59-5.34 4.63 1.63 6.86L12 17.27l-6.05 3.7 1.63-6.86L2.24 9.48l7.02-.59z";
 
-function buildStarRating() {
-  const container = elements.starRating;
+function buildStarRating(container = elements.starRating, hiddenInput = elements.ratingInput, namespace = "") {
   if (!container || container.dataset.built) return;
   container.dataset.built = "true";
   container.dataset.value = "";
@@ -2553,11 +2868,11 @@ function buildStarRating() {
       </svg>
       <svg viewBox="0 0 24 24" class="star-icon star-icon-fill" aria-hidden="true">
         <defs>
-          <clipPath id="starClip${index}">
+          <clipPath id="starClip${namespace}${index}">
             <rect x="0" y="0" width="0" height="24"></rect>
           </clipPath>
         </defs>
-        <path d="${STAR_PATH}" clip-path="url(#starClip${index})"></path>
+        <path d="${STAR_PATH}" clip-path="url(#starClip${namespace}${index})"></path>
       </svg>
       <span class="star-half-zone star-half-left" data-half="0.5"></span>
       <span class="star-half-zone star-half-right" data-half="1"></span>
@@ -2574,7 +2889,7 @@ function buildStarRating() {
 
     starButton.addEventListener("click", (event) => {
       const value = starHoverValue(starButton, index, event.clientX);
-      setStarRating(value);
+      setStarRating(value, container, hiddenInput);
     });
 
     container.append(starButton);
@@ -2584,7 +2899,7 @@ function buildStarRating() {
   clearButton.type = "button";
   clearButton.className = "star-clear";
   clearButton.textContent = "Clear";
-  clearButton.addEventListener("click", () => setStarRating(0));
+  clearButton.addEventListener("click", () => setStarRating(0, container, hiddenInput));
   container.append(clearButton);
 
   paintStars(container, 0);
@@ -2597,13 +2912,13 @@ function buildStarRating() {
     const current = Number(container.dataset.value || 0);
     if (event.key === "ArrowRight" || event.key === "ArrowUp") {
       event.preventDefault();
-      setStarRating(Math.min(5, current + 0.5));
+      setStarRating(Math.min(5, current + 0.5), container, hiddenInput);
     } else if (event.key === "ArrowLeft" || event.key === "ArrowDown") {
       event.preventDefault();
-      setStarRating(Math.max(0, current - 0.5));
+      setStarRating(Math.max(0, current - 0.5), container, hiddenInput);
     } else if (event.key === "Backspace" || event.key === "Delete") {
       event.preventDefault();
-      setStarRating(0);
+      setStarRating(0, container, hiddenInput);
     }
   });
 }
@@ -2626,19 +2941,18 @@ function paintStars(container, value) {
   });
 }
 
-function setStarRating(value) {
-  const container = elements.starRating;
+function setStarRating(value, container = elements.starRating, hiddenInput = elements.ratingInput) {
   const clamped = Math.max(0, Math.min(5, value));
   container.dataset.value = clamped ? String(clamped) : "";
-  elements.ratingInput.value = clamped ? String(clamped) : "";
+  hiddenInput.value = clamped ? String(clamped) : "";
   container.setAttribute("aria-valuenow", String(clamped));
   container.setAttribute("aria-valuetext", clamped ? `${clamped} out of 5 stars` : "Not rated");
   paintStars(container, clamped);
 }
 
-function setStarRatingFromValue(rawValue) {
+function setStarRatingFromValue(rawValue, container = elements.starRating, hiddenInput = elements.ratingInput) {
   const numeric = Number(rawValue || 0);
-  setStarRating(Number.isFinite(numeric) ? numeric : 0);
+  setStarRating(Number.isFinite(numeric) ? numeric : 0, container, hiddenInput);
 }
 
 function openManageStatuses() {
@@ -2827,6 +3141,23 @@ elements.editBookFromDetail?.addEventListener("click", () => {
   elements.bookDetailDialog.close();
   if (id) openBookEdit(id, { returnTo: "detail" });
 });
+elements.logReread?.addEventListener("click", () => {
+  const id = elements.bookDetailDialog.dataset.bookId;
+  if (id) openRereadAdd(id);
+});
+
+elements.rereadDialog?.addEventListener("click", (event) => {
+  if (event.target === elements.rereadDialog) elements.rereadDialog.close();
+});
+$("#closeRereadDialog")?.addEventListener("click", () => elements.rereadDialog.close());
+elements.cancelReread?.addEventListener("click", () => elements.rereadDialog.close());
+elements.rereadForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  saveRereadFromForm();
+});
+elements.deleteReread?.addEventListener("click", () => {
+  if (confirm("Remove this read-through from the history?")) deleteRereadFromForm();
+});
 
 $("#openAddBook")?.addEventListener("click", () => openAddBook());
 $("#closeDialog")?.addEventListener("click", () => elements.dialog.close());
@@ -2849,6 +3180,8 @@ $("#clearForm")?.addEventListener("click", () => {
   elements.bookForm.reset();
   $("#bookId").value = "";
   $("#notes").innerHTML = "";
+  $("#recommendUnlock").value = "";
+  $("#recommendCondition").value = "";
   setStarRatingFromValue("");
 });
 $("#lookupButton")?.addEventListener("click", searchBooks);
@@ -2914,6 +3247,7 @@ window.addEventListener("resize", () => {
 
 setView(currentView);
 buildStarRating();
+buildStarRating(elements.rereadStarRating, elements.rereadRatingInput, "reread");
 setupNotesEditor();
 render();
 initSyncFromStoredConfig();
