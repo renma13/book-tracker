@@ -120,6 +120,7 @@ let currentView = "calendar";
 let calendarDate = new Date();
 let statsYear = String(new Date().getFullYear());
 let libraryPage = 1;
+let libraryFinishDateFilter = null;
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -522,7 +523,20 @@ function renderLibrary() {
   const statusValue = elements.statusFilter.value;
   const searchedBooks = filteredBooks();
 
-  const readingBooks = searchedBooks.filter((book) => book.status === "reading");
+  // Stats drill-downs are based on read events, not a book's current shelf. This
+  // matters for re-reads and for books that have since been moved back to Reading.
+  const matchingFinishByBookId = new Map();
+  if (libraryFinishDateFilter) {
+    allReadEvents().forEach((event) => {
+      if (!event.finishDate || !libraryFinishDateFilter.matches(event.finishDate)) return;
+      const previous = matchingFinishByBookId.get(event.book.id);
+      if (!previous || event.finishDate > previous) matchingFinishByBookId.set(event.book.id, event.finishDate);
+    });
+  }
+
+  const readingBooks = libraryFinishDateFilter
+    ? []
+    : searchedBooks.filter((book) => book.status === "reading");
   const showSpotlight = readingBooks.length > 0;
 
   elements.readingSpotlight.hidden = !showSpotlight;
@@ -532,15 +546,21 @@ function renderLibrary() {
     hydrateCoverThumbnailsStaggered(elements.spotlightGrid);
   }
 
-  const restOfLibrary = searchedBooks.filter((book) => {
-    if (book.status === "reading") return false;
-    return statusValue === "all" || book.status === statusValue;
-  });
+  const restOfLibrary = libraryFinishDateFilter
+    ? searchedBooks
+        .filter((book) => matchingFinishByBookId.has(book.id))
+        .sort((a, b) => matchingFinishByBookId.get(b.id).localeCompare(matchingFinishByBookId.get(a.id)))
+    : searchedBooks.filter((book) => {
+        if (book.status === "reading") return false;
+        return statusValue === "all" || book.status === statusValue;
+      });
 
-  elements.libraryDivider.hidden = !showSpotlight;
+  elements.libraryDivider.hidden = !showSpotlight && !libraryFinishDateFilter;
   const dividerLabel = document.getElementById("libraryDividerLabel");
   if (dividerLabel) {
-    if (statusValue !== "all" && statusValue !== "reading") {
+    if (libraryFinishDateFilter) {
+      dividerLabel.textContent = libraryFinishDateFilter.label;
+    } else if (statusValue !== "all" && statusValue !== "reading") {
       dividerLabel.textContent = statusLabel(statusValue);
     } else {
       dividerLabel.textContent = "Rest of library";
@@ -725,6 +745,7 @@ function shelfCoverCard(book) {
 }
 
 function openShelfInLibrary(statusId) {
+  clearLibraryFinishDateFilter();
   elements.globalSearch.value = "";
   elements.statusFilter.value = statusId;
   libraryPage = 1;
@@ -1006,15 +1027,25 @@ function renderRhythmChart(finishedWithDates, { isAllTime, year }) {
 function openMonthInLibrary(monthIndex, year) {
   elements.globalSearch.value = "";
   elements.statusFilter.value = "finished";
-  libraryPage = 1;
-  setView("library");
-  render();
-  // The library view doesn't have its own month filter, so the search box is the
-  // most direct way to land the person on the right slice of their finished books.
   const monthName = new Date(year || new Date().getFullYear(), monthIndex, 1).toLocaleDateString(undefined, {
     month: "long",
   });
+  libraryFinishDateFilter = {
+    label: `Finished in ${monthName}${year ? ` ${year}` : " (all years)"}`,
+    matches: (finishDate) => {
+      const date = new Date(`${finishDate}T00:00:00`);
+      return date.getMonth() === monthIndex && (year === null || date.getFullYear() === year);
+    },
+  };
+  libraryPage = 1;
+  setView("library");
+  render();
   elements.globalSearch.placeholder = `Showing books finished in ${monthName}${year ? ` ${year}` : ""}`;
+}
+
+function clearLibraryFinishDateFilter() {
+  libraryFinishDateFilter = null;
+  elements.globalSearch.placeholder = "Filter your books";
 }
 
 // ---------- Genre donut ----------
@@ -1413,11 +1444,17 @@ function streakLevel(count, maxCount) {
 function openWeekInLibrary(weekStart, weekEnd) {
   elements.globalSearch.value = "";
   elements.statusFilter.value = "finished";
+  const startKey = toDateInput(weekStart);
+  const endKey = toDateInput(weekEnd);
+  const startLabel = formatDisplayDate(startKey);
+  const endLabel = formatDisplayDate(endKey);
+  libraryFinishDateFilter = {
+    label: `Finished ${startLabel} – ${endLabel}`,
+    matches: (finishDate) => finishDate >= startKey && finishDate <= endKey,
+  };
   libraryPage = 1;
   setView("library");
   render();
-  const startLabel = formatDisplayDate(toDateInput(weekStart));
-  const endLabel = formatDisplayDate(toDateInput(weekEnd));
   elements.globalSearch.placeholder = `Showing books finished ${startLabel} – ${endLabel}`;
 }
 
@@ -3584,12 +3621,18 @@ function finishRemoveStatus(id) {
   render();
 }
 
-elements.navTabs.forEach((tab) => tab.addEventListener("click", () => setView(tab.dataset.view)));
+elements.navTabs.forEach((tab) => tab.addEventListener("click", () => {
+  clearLibraryFinishDateFilter();
+  setView(tab.dataset.view);
+  if (tab.dataset.view === "library") renderLibrary();
+}));
 elements.globalSearch?.addEventListener("input", () => {
+  clearLibraryFinishDateFilter();
   libraryPage = 1;
   render();
 });
 elements.statusFilter?.addEventListener("change", () => {
+  clearLibraryFinishDateFilter();
   libraryPage = 1;
   render();
 });
@@ -3602,6 +3645,7 @@ elements.statsYearFilter?.addEventListener("change", () => {
 // the rest of the app (renderLibrary, statusFilter.value) keeps working unchanged.
 document.querySelectorAll(".filter-pill").forEach((pill) => {
   pill.addEventListener("click", () => {
+    clearLibraryFinishDateFilter();
     document.querySelectorAll(".filter-pill").forEach((p) => p.classList.remove("active"));
     pill.classList.add("active");
     if (elements.statusFilter) {
