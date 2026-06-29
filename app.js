@@ -510,12 +510,9 @@ function openDayBooks(dateKey, entries) {
 
   hydrateCoverThumbnailsStaggered(elements.dayBooksList);
 
-  elements.dayBooksList.addEventListener(
-    "click",
-    () => elements.dayBooksDialog.close(),
-    { capture: true, once: true }
-  );
-
+  // Keep this dialog open beneath Book Details. Native modal dialogs are stacked,
+  // so closing the selected book naturally returns to this day's full list.
+  // This also keeps mouse and keyboard activation of a book consistent.
   elements.dayBooksDialog.showModal();
 }
 
@@ -2323,14 +2320,16 @@ function openBookEdit(id, { returnTo = "" } = {}) {
 }
 
 function collectFormBook() {
+  const finishDate = $("#finishDate").value;
+
   return {
     id: $("#bookId").value || crypto.randomUUID(),
     title: $("#title").value.trim(),
     author: $("#author").value.trim(),
-    status: $("#status").value,
+    status: finishDate ? "finished" : $("#status").value,
     rating: $("#rating").value,
     startDate: $("#startDate").value,
-    finishDate: $("#finishDate").value,
+    finishDate,
     year: $("#year").value.trim(),
     pages: Number($("#pages").value || 0),
     cover: $("#cover").value.trim(),
@@ -3761,6 +3760,12 @@ elements.bookForm?.addEventListener("submit", (event) => {
   saveBooks();
   render();
   elements.dialog.close();
+});
+
+// Finishing a book is definitive: as soon as a finish date is entered, keep the
+// status field (and the value saved below) in sync with it.
+$("#finishDate")?.addEventListener("input", (event) => {
+  if (event.currentTarget.value) elements.statusSelect.value = "finished";
 });
 
 elements.deleteBook?.addEventListener("click", () => {
