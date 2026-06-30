@@ -127,16 +127,51 @@ button {
 }
 
 .nav-tab {
-  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 5px 10px;
   color: var(--ink);
+  font-weight: 650;
   text-align: left;
   background: transparent;
+}
+
+.nav-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  color: var(--sage-deep);
+  transition: color 160ms ease, transform 160ms ease;
+}
+
+.nav-icon svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
 }
 
 .nav-tab:hover,
 .nav-tab.active {
   background: #f0e8de;
   border-color: var(--line);
+}
+
+.nav-tab:hover .nav-icon,
+.nav-tab.active .nav-icon {
+  color: #435341;
+  transform: scale(1.04);
+}
+
+.nav-tab:focus-visible {
+  outline: 2px solid var(--sage-deep);
+  outline-offset: 2px;
 }
 
 .sidebar-panel {
@@ -2430,6 +2465,7 @@ label {
   }
 
   .nav-tab {
+    justify-content: center;
     text-align: center;
   }
 }
@@ -2498,7 +2534,23 @@ label {
 
 @media (max-width: 520px) {
   .nav-tabs {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 4px;
+  }
+
+  .nav-tab {
+    gap: 0;
+    min-width: 0;
+    padding: 6px 2px;
+  }
+
+  .nav-tab > span:not(.nav-icon) {
+    display: none;
+  }
+
+  .nav-icon {
+    width: 32px;
+    height: 32px;
   }
 
   .calendar-controls {
