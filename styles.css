@@ -2595,6 +2595,18 @@ label {
   margin-bottom: 10px;
 }
 
+#bookDetailMeta {
+  margin-bottom: 9px;
+}
+
+#bookDetailGenres {
+  margin-bottom: 6px;
+}
+
+.book-detail-tags:empty {
+  display: none;
+}
+
 .detail-tag {
   padding: 3px 10px;
   font-size: 0.78rem;
@@ -2619,7 +2631,7 @@ label {
 
 .book-detail-recommend {
   padding: 10px 14px;
-  margin: 0 0 14px;
+  margin: 16px 0 14px;
   color: var(--sage-deep);
   font-size: 0.9rem;
   line-height: 1.5;
