@@ -395,9 +395,9 @@ function eventsForDay(dateKey) {
 }
 
 function calendarCoverClass(status) {
-  // In-progress days reuse the grey "finished" look, since the book isn't done yet
-  // but isn't the vivid "just started" moment either.
-  if (status === "finished" || status === "in-progress") return "finished-cover";
+  // The cover stays grey from the day reading starts through every in-progress day.
+  // It returns to full color only on the day the book is finished.
+  if (status === "finished") return "finished-cover";
   return "started-cover";
 }
 
